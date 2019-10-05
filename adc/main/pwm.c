@@ -8,19 +8,37 @@
 #define LEDC_HS_MODE           LEDC_HIGH_SPEED_MODE
 #define LEDC_HS_CH0_GPIO       (18)
 #define LEDC_HS_CH0_CHANNEL    LEDC_CHANNEL_0
+extern uint32_t percent;
 
-void app_main(void)
+void set_pwm(void)
 {
-    int ch;
+
     ledc_timer_config_t ledc_timer = {
         .duty_resolution = LEDC_TIMER_13_BIT,
-        .freq_hz = 50000,
+        .freq_hz = 5000,
         .speed_mode = LEDC_HS_MODE,
         .timer_num = LEDC_HS_TIMER,
         .clk_cfg = LEDC_AUTO_CLK,
-    }
+    };
 
-//LEDC EXAMPLE CHANNEL CONFIGTÓL FOLYTATNI!!
+    ledc_timer_config(&ledc_timer);
+
+    ledc_channel_config_t ledc_channel = {
+            .channel    = LEDC_HS_CH0_CHANNEL,
+            .duty       = 0,
+            .gpio_num   = LEDC_HS_CH0_GPIO,
+            .speed_mode = LEDC_HS_MODE,
+            .hpoint     = 0,
+            .timer_sel  = LEDC_HS_TIMER
+        };
+
+    ledc_channel_config(&ledc_channel);
+
+    while (1)
+    {
+        ledc_set_duty(ledc_channel.speed_mode, ledc_channel.channel, percent*40);
+        ledc_update_duty(ledc_channel.speed_mode, ledc_channel.channel);
+    }
 
 
 }

@@ -18,7 +18,7 @@ static const adc_atten_t atten = ADC_ATTEN_DB_0;
 static const adc_unit_t unit = ADC_UNIT_1;
 uint32_t percent = 0;
 
-
+extern void set_pwm(void);
 
 static void check_efuse(void)
 {
@@ -79,13 +79,14 @@ void app_main(void)
             }
         }
         adc_reading /= NO_OF_SAMPLES;
-        kecske=adc_reading/40.95;
+        percent=adc_reading/40.95;
         //Convert adc_reading to voltage in mV
         uint32_t voltage = esp_adc_cal_raw_to_voltage(adc_reading, adc_chars);
         printf("Raw: %d\tVoltage: %dmV\n", adc_reading, voltage);
         printf("%d  \n", percent);
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
+        set_pwm();
 }
 
 
