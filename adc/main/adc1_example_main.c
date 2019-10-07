@@ -82,11 +82,12 @@ void app_main(void)
         percent=adc_reading/40.95;
         //Convert adc_reading to voltage in mV
         uint32_t voltage = esp_adc_cal_raw_to_voltage(adc_reading, adc_chars);
-        printf("Raw: %d\tVoltage: %dmV\n", adc_reading, voltage);
-        printf("%d  \n", percent);
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
+        //printf("Raw: %d\tVoltage: %dmV\n", adc_reading, voltage);
+       // printf("%d  \n", percent);
         set_pwm();
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
 }
 
 
