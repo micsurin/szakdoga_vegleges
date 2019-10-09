@@ -8,10 +8,9 @@
 #define LEDC_HS_MODE           LEDC_HIGH_SPEED_MODE
 #define LEDC_HS_CH0_GPIO       (18)
 #define LEDC_HS_CH0_CHANNEL    LEDC_CHANNEL_1
-#define LEDC_TEST_DUTY         (4000)
 
-extern uint32_t percent;
-void set_pwm(void)
+
+void set_pwm(int duty)
 
 {
 
@@ -37,6 +36,6 @@ void set_pwm(void)
         };
 
     ledc_channel_config(&ledc_channel);
-    ledc_set_duty(ledc_channel.speed_mode, ledc_channel.channel, percent*40);
+    ledc_set_duty(ledc_channel.speed_mode, ledc_channel.channel, duty);
     ledc_update_duty(ledc_channel.speed_mode, ledc_channel.channel);
 }
