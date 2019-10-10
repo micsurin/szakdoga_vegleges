@@ -63,9 +63,19 @@ static void check_efuse(void)
         printf("eFuse Vref: NOT supported\n");
     }
 }
+
+static void print_char_val_type(esp_adc_cal_value_t val_type)
+{
+	if(val_type == ESP_ADC_CAL_VAL_EFUSE_TP){
+		printf("Characterised using two point value \n");}
+	else if(val_type == ESP_ADC_CAL_VAL_EFUSE_VREF) {
+	printf("Characterised using eFuse Vref\n");}
+	else {printf("Characterized using default vref\n");}
+
+}
 //GPIO inicializálása
 void gomb_init(void){
-    gpio_config_t input_config = {
+  	 gpio_config_t input_config = {
         .intr_type = GPIO_PIN_INTR_ANYEDGE,
         .pin_bit_mask = GPIO_INPUT_PIN_SEL,
         .mode = GPIO_MODE_INPUT,
@@ -91,7 +101,7 @@ void gomb(void){
 
 }
 //ADC karakterizáció
-void adc_charac (void)
+void adc_charac ()
 {
    	adc1_config_width(ADC_WIDTH_BIT_12);
 	adc1_config_channel_atten(channel, atten);
@@ -165,15 +175,24 @@ void app_main(void)
     //Check if Two Point or Vref are burned into eFuse
     check_efuse();
     //Characterize ADC
-    adc_charac();
+   // adc_charac();
     //configure GPIO
     gomb_init();
     //Configure PWM
    // set_pwm();
 
+	adc1_config_width(ADC_WIDTH_BIT_12);
+        adc1_config_channel_atten(channel, atten);
+        adc_chars = calloc(1, sizeof(esp_adc_cal_characteristics_t));
+        esp_adc_cal_value_t val_type = esp_adc_cal_characterize(unit, atten, ADC_WIDTH_BIT_12, DEFAULT_VREF, adc_chars);
+        print_char_val_type(val_type);
+
+
     xTaskCreate(adc_read_task, "adc_read_task", 2048, NULL, 5, NULL);
     xTaskCreate(pwm, "pwm", 2048, NULL, 5, NULL);
-
+	while(1)
+{vTaskDelay(pdMS_TO_TICKS(1000));
+}
 }
 
 
