@@ -141,7 +141,7 @@ void adc_read_task(void *pvParameter)
 void pwm(void *pvParameter)
 {
    ledc_timer_config_t ledc_timer = {
-        .duty_resolution = LEDC_TIMER_13_BIT,
+        .duty_resolution = LEDC_TIMER_12_BIT,
         .freq_hz = 5000,
         .speed_mode = LEDC_HS_MODE,
         .timer_num = LEDC_HS_TIMER//,
@@ -188,8 +188,9 @@ void app_main(void)
         print_char_val_type(val_type);
 
 
-    xTaskCreate(adc_read_task, "adc_read_task", 2048, NULL, 5, NULL);
-    xTaskCreate(pwm, "pwm", 2048, NULL, 5, NULL);
+    xTaskCreatePinnedToCore(adc_read_task, "adc_read_task", 4096, NULL, 5, NULL, 1);
+    xTaskCreatePinnedToCore(pwm, "pwm", 4096, NULL, 5, NULL, 1);
+    vTaskStartScheduler();
 	while(1)
 {vTaskDelay(pdMS_TO_TICKS(1000));
 }
