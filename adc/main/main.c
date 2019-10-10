@@ -187,7 +187,6 @@ void app_main(void)
         esp_adc_cal_value_t val_type = esp_adc_cal_characterize(unit, atten, ADC_WIDTH_BIT_12, DEFAULT_VREF, adc_chars);
         print_char_val_type(val_type);
 
-
     xTaskCreatePinnedToCore(adc_read_task, "adc_read_task", 4096, NULL, 5, NULL, 1);
     xTaskCreatePinnedToCore(pwm, "pwm", 4096, NULL, 5, NULL, 1);
     vTaskStartScheduler();
