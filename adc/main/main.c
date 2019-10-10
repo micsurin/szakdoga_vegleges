@@ -112,8 +112,31 @@ void adc_charac ()
 // ADC kiolvasása
 void adc_read_task(void *pvParameter)
 {
+
+   ledc_timer_config_t ledc_timer = {
+        .duty_resolution = LEDC_TIMER_12_BIT,
+        .freq_hz = 5000,
+        .speed_mode = LEDC_HS_MODE,
+        .timer_num = LEDC_HS_TIMER//,
+       // .clk_cfg = LEDC_AUTO_CLK,
+    };
+
+    ledc_timer_config(&ledc_timer);
+
+    ledc_channel_config_t ledc_channel = {
+            .channel    = LEDC_HS_CH0_CHANNEL,
+            .duty       = 0,
+            .gpio_num   = LEDC_HS_CH0_GPIO,
+            .speed_mode = LEDC_HS_MODE,
+            .hpoint     = 0,
+            .timer_sel  = LEDC_HS_TIMER
+        };
+
+    ledc_channel_config(&ledc_channel);
+
      while (1) {
         adc_reading = 0;
+        
         //Multisampling
         for (int i = 0; i < NO_OF_SAMPLES; i++)
 	   {
@@ -126,19 +149,21 @@ void adc_read_task(void *pvParameter)
                 adc2_get_raw((adc2_channel_t)channel, ADC_WIDTH_BIT_12, &raw);
                 adc_reading += raw;
            	 }
-	vTaskDelay(pdMS_TO_TICKS(10));
 
            }
         adc_reading /= NO_OF_SAMPLES;
         percent=adc_reading/40.95;
+        ledc_set_duty(ledc_channel.speed_mode, ledc_channel.channel,adc_reading);
+        ledc_update_duty(ledc_channel.speed_mode, ledc_channel.channel);
         //Convert adc_reading to voltage in mV
         printf("%d  \n", percent);
-	vTaskDelete(NULL);
+        vTaskDelay(pdMS_TO_TICKS(10));
+//	vTaskDelete(NULL);
 }
 }
 
 //PWM konfigurálása
-void pwm(void *pvParameter)
+/*void pwm(void *pvParameter)
 {
    ledc_timer_config_t ledc_timer = {
         .duty_resolution = LEDC_TIMER_12_BIT,
@@ -166,9 +191,9 @@ void pwm(void *pvParameter)
                  ledc_update_duty(ledc_channel.speed_mode, ledc_channel.channel);
                  vTaskDelay(pdMS_TO_TICKS(10));
          }
-	vTaskDelete(NULL);
+//	vTaskDelete(NULL);
 }
-
+*/
 
 void app_main(void)
 {
@@ -187,11 +212,11 @@ void app_main(void)
         esp_adc_cal_value_t val_type = esp_adc_cal_characterize(unit, atten, ADC_WIDTH_BIT_12, DEFAULT_VREF, adc_chars);
         print_char_val_type(val_type);
 
-    xTaskCreatePinnedToCore(adc_read_task, "adc_read_task", 4096, NULL, 5, NULL, 1);
-    xTaskCreatePinnedToCore(pwm, "pwm", 4096, NULL, 5, NULL, 1);
-    vTaskStartScheduler();
+    xTaskCreate(adc_read_task, "adc_read_task", 2048, NULL, 1, NULL);
+   // xTaskCreatePinnedToCore(pwm, "pwm", 4096, NULL, 5, NULL, 1);
+   // vTaskStartScheduler();
 	while(1)
-{vTaskDelay(pdMS_TO_TICKS(1000));
+{vTaskDelay(pdMS_TO_TICKS(10));
 }
 }
 
