@@ -11,7 +11,9 @@
 #include "driver/ledc.h"
 #include "esp_err.h"
 #include "driver/mcpwm.h"
-#include "soc/mcpwm_periph.h"
+#include "driver/ledc.h"
+#include "soc/mcpwm_reg.h"
+#include "soc/mcpwm_struct.h"
 
 //ADC paraméterek
 #define DEFAULT_VREF    1100        //Use adc2_vref_to_gpio() to obtain a better estimate
@@ -33,7 +35,9 @@
 #define LEDC_HS_CH0_GPIO       (18)
 #define LEDC_HS_CH0_CHANNEL    LEDC_CHANNEL_1
 
-
+//ledc_timer_config_t ledc_timer; 
+//ledc_channel_config_t ledc_channel;
+uint32_t adc_reading;
 
 uint32_t szint;//GPIO szint
 
@@ -87,47 +91,51 @@ void gomb(void){
 
 }
 //ADC karakterizáció
-void adc_charac (void){
-        adc_chars = calloc(1, sizeof(esp_adc_cal_characteristics_t));
-    esp_adc_cal_value_t val_type = esp_adc_cal_characterize(unit, atten, ADC_WIDTH_BIT_12, DEFAULT_VREF, adc_chars);
-    print_char_val_type(val_type);
+void adc_charac (void)
+{
+   	adc1_config_width(ADC_WIDTH_BIT_12);
+	adc1_config_channel_atten(channel, atten);
+	adc_chars = calloc(1, sizeof(esp_adc_cal_characteristics_t));
+	esp_adc_cal_value_t val_type = esp_adc_cal_characterize(unit, atten, ADC_WIDTH_BIT_12, DEFAULT_VREF, adc_chars);
+	print_char_val_type(val_type);
 }
 // ADC kiolvasása
-void adc_read(void *pvParameter){
+void adc_read_task(void *pvParameter)
+{
      while (1) {
-        uint32_t adc_reading = 0;
+        adc_reading = 0;
         //Multisampling
-        for (int i = 0; i < NO_OF_SAMPLES; i++) {
-            if (unit == ADC_UNIT_1) {
+        for (int i = 0; i < NO_OF_SAMPLES; i++)
+	   {
+            if (unit == ADC_UNIT_1)
+	    {
                 adc_reading += adc1_get_raw((adc1_channel_t)channel);
-            } else {
+            }
+	 else {
                 int raw;
                 adc2_get_raw((adc2_channel_t)channel, ADC_WIDTH_BIT_12, &raw);
                 adc_reading += raw;
-            }
-        }
+           	 }
+	vTaskDelay(pdMS_TO_TICKS(10));
+
+           }
         adc_reading /= NO_OF_SAMPLES;
         percent=adc_reading/40.95;
         //Convert adc_reading to voltage in mV
-        uint32_t voltage = esp_adc_cal_raw_to_voltage(adc_reading, adc_chars);
-        printf("Raw: %d\tVoltage: %dmV\n", adc_reading, voltage);
         printf("%d  \n", percent);
-        vTaskDelay(pdMS_TO_TICKS(10));
+	vTaskDelete(NULL);
+}
 }
 
 //PWM konfigurálása
-void pwm_config(void)
-
+void pwm(void *pvParameter)
 {
-
-    ledc_timer_config_t ledc_timer = {
-
+   ledc_timer_config_t ledc_timer = {
         .duty_resolution = LEDC_TIMER_13_BIT,
         .freq_hz = 5000,
         .speed_mode = LEDC_HS_MODE,
-        .timer_num = LEDC_HS_TIMER,
-        .clk_cfg = LEDC_AUTO_CLK,
-    
+        .timer_num = LEDC_HS_TIMER//,
+       // .clk_cfg = LEDC_AUTO_CLK,
     };
 
     ledc_timer_config(&ledc_timer);
@@ -142,31 +150,29 @@ void pwm_config(void)
         };
 
     ledc_channel_config(&ledc_channel);
+	while(1)
+	{
+                 ledc_set_duty(ledc_channel.speed_mode, ledc_channel.channel,adc_reading);
+                 ledc_update_duty(ledc_channel.speed_mode, ledc_channel.channel);
+                 vTaskDelay(pdMS_TO_TICKS(10));
+         }
+	vTaskDelete(NULL);
 }
 
-void pwm(void *pvParameter){
-    while(1){
-    ledc_set_duty(ledc_channel.speed_mode, ledc_channel.channel, adc_reading);
-    ledc_update_duty(ledc_channel.speed_mode, ledc_channel.channel);
-    vTaskDelay(pdMS_TO_TICKS(10));
-    }
-}
+
 void app_main(void)
 {
     //Check if Two Point or Vref are burned into eFuse
     check_efuse();
-    //Configure ADC
-    adc1_config_width(ADC_WIDTH_BIT_12);
-    adc1_config_channel_atten(channel, atten);
     //Characterize ADC
     adc_charac();
     //configure GPIO
     gomb_init();
     //Configure PWM
-    set_pwm();
+   // set_pwm();
 
-    xTaskCreate(&adc_read, "read adc task", 2048, NULL, 5, NULL);
-    xTaskCreate(&pwm, "set pwm", 2048, NULL, 5, NULL);
+    xTaskCreate(adc_read_task, "adc_read_task", 2048, NULL, 5, NULL);
+    xTaskCreate(pwm, "pwm", 2048, NULL, 5, NULL);
 
 }
 
