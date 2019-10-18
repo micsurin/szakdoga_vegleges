@@ -31,14 +31,7 @@
 #define gomb1 15
 #define GPIO_INPUT_PIN_SEL ((1ULL<<gomb1))
 
-//PWM paraméterek
-/*#define LEDC_HS_TIMER          LEDC_TIMER_0
-#define LEDC_HS_MODE           LEDC_HIGH_SPEED_MODE
-#define LEDC_HS_CH0_GPIO       (18)
-#define LEDC_HS_CH0_CHANNEL    LEDC_CHANNEL_1
-*/
-//ledc_timer_config_t ledc_timer; 
-//ledc_channel_config_t ledc_channel;
+#define watt 16
 
 uint32_t szint;
 
@@ -161,6 +154,9 @@ float iout;
 float vout;
 float vbat;
 float Rload;
+float Voutcalc;
+float dutypercent;
+
 // ADC kiolvasása task
 void adc_read_task(void *pvParameter)
 {
@@ -203,62 +199,39 @@ void adc_read_task(void *pvParameter)
         vout = (13.322/4095)*vout_raw;
         vbat = (4.2/4095)*vbat_raw;
         Rload = vout/iout;
-
-//        percent=adc_reading/40.95;
-        ledc_set_duty(buck_pwm.speed_mode, buck_pwm.channel,128);
+        Voutcalc = sqrt(watt)*Rload;
+        if (vbat <= Voutcalc )
+        {
+        dutypercent = vbat/Voutcalc;
+        ledc_set_duty(buck_pwm.speed_mode, buck_pwm.channel,dutypercent*127);
         ledc_update_duty(buck_pwm.speed_mode, buck_pwm.channel);
-        //Convert adc_reading to voltage in mV
-        //printf("%d  \n", percent);
+        ledc_set_duty(boost_pwm.speed_mode, boost_pwm.channel,0);
+        ledc_update_duty(boost_pwm.speed_mode, boost_pwm.channel); 
+        }
+        else
+        {
+        dutypercent = 1-(vbat/Voutcalc);
+        ledc_set_duty(boost_pwm.speed_mode, boost_pwm.channel,dutypercent*127);
+        ledc_update_duty(boost_pwm.speed_mode, boost_pwm.channel);
+        ledc_set_duty(buck_pwm.speed_mode, buck_pwm.channel,127);
+        ledc_update_duty(buck_pwm.speed_mode, buck_pwm.channel); 
+        }
+
         vTaskDelay(pdMS_TO_TICKS(10));
 	
 }
         vTaskDelete(NULL);
 }
 
-//PWM konfigurálása
-/*void pwm(void *pvParameter)
-{
-   ledc_timer_config_t ledc_timer = {
-        .duty_resolution = LEDC_TIMER_12_BIT,
-        .freq_hz = 5000,
-        .speed_mode = LEDC_HS_MODE,
-        .timer_num = LEDC_HS_TIMER//,
-       // .clk_cfg = LEDC_AUTO_CLK,
-    };
-
-    ledc_timer_config(&ledc_timer);
-
-    ledc_channel_config_t ledc_channel = {
-            .channel    = LEDC_HS_CH0_CHANNEL,
-            .duty       = 0,
-            .gpio_num   = LEDC_HS_CH0_GPIO,
-            .speed_mode = LEDC_HS_MODE,
-            .hpoint     = 0,
-            .timer_sel  = LEDC_HS_TIMER
-        };
-
-    ledc_channel_config(&ledc_channel);
-	while(1)
-	{
-                 ledc_set_duty(ledc_channel.speed_mode, ledc_channel.channel,adc_reading);
-                 ledc_update_duty(ledc_channel.speed_mode, ledc_channel.channel);
-                 vTaskDelay(pdMS_TO_TICKS(10));
-         }
-//	vTaskDelete(NULL);
-}
-*/
 
 void app_main(void)
 {
     //Check if Two Point or Vref are burned into eFuse
     check_efuse();
     //Characterize ADC
-   // adc_charac();
+    adc_charac();
     //configure GPIO
     gomb_init();
-    //Configure PWM
-   // set_pwm();
-    adc_charac();
 
     xTaskCreate(gomb, "gomb_kiolvasas", 2048, NULL, 4, NULL);    
     xTaskCreate(adc_read_task, "adc_read_task", 2048, NULL, 4, NULL);
