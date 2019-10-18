@@ -22,30 +22,45 @@
 //PWM és timer paraméterek
 #define LEDC_HS_TIMER          LEDC_TIMER_0
 #define LEDC_HS_MODE           LEDC_HIGH_SPEED_MODE
-#define LEDC_HS_CH0_GPIO       (18)
-#define LEDC_HS_CH0_CHANNEL    LEDC_CHANNEL_1
+#define LEDC_HS_CH0_GPIO       (25)
+#define LEDC_HS_CH0_CHANNEL    LEDC_CHANNEL_0
+#define LEDC_HS_CH1_GPIO       (26)
+#define LEDC_HS_CH1_CHANNEL    LEDC_CHANNEL_1
 
 //GPIO paraméterek
 #define gomb1 15
 #define GPIO_INPUT_PIN_SEL ((1ULL<<gomb1))
 
 //PWM paraméterek
-#define LEDC_HS_TIMER          LEDC_TIMER_0
+/*#define LEDC_HS_TIMER          LEDC_TIMER_0
 #define LEDC_HS_MODE           LEDC_HIGH_SPEED_MODE
 #define LEDC_HS_CH0_GPIO       (18)
 #define LEDC_HS_CH0_CHANNEL    LEDC_CHANNEL_1
-
+*/
 //ledc_timer_config_t ledc_timer; 
 //ledc_channel_config_t ledc_channel;
-uint32_t adc_reading;
 
-uint32_t szint;//GPIO szint
+uint32_t szint;
 
-static esp_adc_cal_characteristics_t *adc_chars;
-static const adc_channel_t channel = ADC_CHANNEL_6;     //GPIO34 if ADC1, GPIO14 if ADC2
-static const adc_atten_t atten = ADC_ATTEN_DB_0;
-static const adc_unit_t unit = ADC_UNIT_1;
-uint32_t percent = 0;
+
+
+
+//kimeneti áram mérés konfiguráció
+static esp_adc_cal_characteristics_t *adc_iout;
+static const adc_channel_t adc_iout_channel = ADC_CHANNEL_6;     //GPIO34
+static const adc_atten_t adc_iout_atten = ADC_ATTEN_DB_0;
+static const adc_unit_t adc_iout_unit = ADC_UNIT_1;
+//kimeneti fesz mérés konfiguráció
+static esp_adc_cal_characteristics_t *adc_vout;
+static const adc_channel_t adc_vout_channel = ADC_CHANNEL_7;     //GPIO35
+static const adc_atten_t adc_vout_atten = ADC_ATTEN_DB_0;
+static const adc_unit_t adc_vout_unit = ADC_UNIT_1;
+//akksifesz mérés konfiguráció
+static esp_adc_cal_characteristics_t *adc_vbat;
+static const adc_channel_t adc_vbat_channel = ADC_CHANNEL_4;     //GPIO32
+static const adc_atten_t adc_vbat_atten = ADC_ATTEN_DB_0;
+static const adc_unit_t adc_vbat_unit = ADC_UNIT_1;
+
 
 static void check_efuse(void)
 {
@@ -83,10 +98,19 @@ void gomb_init(void){
     };
     gpio_config(&input_config);
 }
+static xQueueHandle gpio_evt_queue = NULL;
+
+static void IRAM_ATTR gpio_isr_handler(void* arg)
+{
+    BaseType_t gpio_num = (BaseType_t) arg;
+    xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
+}
+
 //GOMB kiolvasása
-void gomb(void){
+void gomb(void *pvParameter)
+{
     while(1){
-        gpio_get_level(szint);
+        szint = gpio_get_level(gomb1);
         if(szint==0){
             printf("\n a gomb meg van nyomva");
         }
@@ -94,72 +118,101 @@ void gomb(void){
         {
             printf("\n a gomb nincs megnyomva");
         }
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 
 
-
+vTaskDelete(NULL);
 }
 //ADC karakterizáció
 void adc_charac ()
 {
+    //Iout karakterizáció
    	adc1_config_width(ADC_WIDTH_BIT_12);
-	adc1_config_channel_atten(channel, atten);
-	adc_chars = calloc(1, sizeof(esp_adc_cal_characteristics_t));
-	esp_adc_cal_value_t val_type = esp_adc_cal_characterize(unit, atten, ADC_WIDTH_BIT_12, DEFAULT_VREF, adc_chars);
-	print_char_val_type(val_type);
+	adc1_config_channel_atten(adc_iout_channel, adc_iout_atten);
+	adc_iout = calloc(1, sizeof(esp_adc_cal_characteristics_t));
+	esp_adc_cal_value_t iout_val_type = esp_adc_cal_characterize(adc_iout_unit, adc_iout_atten, ADC_WIDTH_BIT_12, DEFAULT_VREF, adc_iout);
+	print_char_val_type(iout_val_type);
+    //Vout karakterizáció
+	adc1_config_channel_atten(adc_vout_channel, adc_vout_atten);
+	adc_vout = calloc(1, sizeof(esp_adc_cal_characteristics_t));
+	esp_adc_cal_value_t vout_val_type = esp_adc_cal_characterize(adc_vout_unit, adc_vout_atten, ADC_WIDTH_BIT_12, DEFAULT_VREF, adc_vout);
+	print_char_val_type(vout_val_type);  
+    //Vbat karakterizáció
+	adc1_config_channel_atten(adc_vbat_channel, adc_vbat_atten);
+	adc_vbat = calloc(1, sizeof(esp_adc_cal_characteristics_t));
+	esp_adc_cal_value_t vbat_val_type = esp_adc_cal_characterize(adc_vbat_unit, adc_vbat_atten, ADC_WIDTH_BIT_12, DEFAULT_VREF, adc_vbat);
+	print_char_val_type(vbat_val_type);    
+  
 }
-// ADC kiolvasása
+
+//pwm timer konfiguráció
+ ledc_timer_config_t ledc_timer = {
+    .duty_resolution = LEDC_TIMER_7_BIT,
+    .freq_hz = 500000,
+    .speed_mode = LEDC_HS_MODE,
+    .timer_num = LEDC_HS_TIMER
+};
+//változók deklarálása a méréshez/szabályozáshoz
+uint32_t iout_raw;
+uint32_t vout_raw;
+uint32_t vbat_raw;
+float iout;
+float vout;
+float vbat;
+float Rload;
+// ADC kiolvasása task
 void adc_read_task(void *pvParameter)
 {
-
-   ledc_timer_config_t ledc_timer = {
-        .duty_resolution = LEDC_TIMER_12_BIT,
-        .freq_hz = 5000,
-        .speed_mode = LEDC_HS_MODE,
-        .timer_num = LEDC_HS_TIMER//,
-       // .clk_cfg = LEDC_AUTO_CLK,
-    };
-
     ledc_timer_config(&ledc_timer);
 
-    ledc_channel_config_t ledc_channel = {
-            .channel    = LEDC_HS_CH0_CHANNEL,
-            .duty       = 0,
-            .gpio_num   = LEDC_HS_CH0_GPIO,
-            .speed_mode = LEDC_HS_MODE,
-            .hpoint     = 0,
-            .timer_sel  = LEDC_HS_TIMER
-        };
+    ledc_channel_config_t buck_pwm = {
+        .channel    = LEDC_HS_CH0_CHANNEL,
+        .duty       = 0,
+        .gpio_num   = LEDC_HS_CH0_GPIO,
+        .speed_mode = LEDC_HS_MODE,
+        .hpoint     = 0,
+        .timer_sel  = LEDC_HS_TIMER
+    };
+    ledc_channel_config_t boost_pwm = {
+        .channel    = LEDC_HS_CH1_CHANNEL,
+        .duty       = 0,
+        .gpio_num   = LEDC_HS_CH1_GPIO,
+        .speed_mode = LEDC_HS_MODE,
+        .hpoint     = 0,
+        .timer_sel  = LEDC_HS_TIMER
+    };
 
-    ledc_channel_config(&ledc_channel);
+        ledc_channel_config(&buck_pwm);
+        ledc_channel_config(&boost_pwm);
+
 
      while (1) {
-        adc_reading = 0;
-        
         //Multisampling
         for (int i = 0; i < NO_OF_SAMPLES; i++)
 	   {
-            if (unit == ADC_UNIT_1)
-	    {
-                adc_reading += adc1_get_raw((adc1_channel_t)channel);
-            }
-	 else {
-                int raw;
-                adc2_get_raw((adc2_channel_t)channel, ADC_WIDTH_BIT_12, &raw);
-                adc_reading += raw;
-           	 }
+            iout_raw += adc1_get_raw((adc1_channel_t)adc_iout_channel);
+            vout_raw += adc1_get_raw((adc1_channel_t)adc_vout_channel);
+            vbat_raw += adc1_get_raw((adc1_channel_t)adc_vbat_channel);
+       };
+        iout_raw /= NO_OF_SAMPLES;
+        vout_raw /= NO_OF_SAMPLES;
+        vbat_raw /= NO_OF_SAMPLES;
 
-           }
-        adc_reading /= NO_OF_SAMPLES;
-        percent=adc_reading/40.95;
-        ledc_set_duty(ledc_channel.speed_mode, ledc_channel.channel,adc_reading);
-        ledc_update_duty(ledc_channel.speed_mode, ledc_channel.channel);
+        iout = (22/4095)*iout_raw;
+        vout = (13.322/4095)*vout_raw;
+        vbat = (4.2/4095)*vbat_raw;
+        Rload = vout/iout;
+
+//        percent=adc_reading/40.95;
+        ledc_set_duty(buck_pwm.speed_mode, buck_pwm.channel,128);
+        ledc_update_duty(buck_pwm.speed_mode, buck_pwm.channel);
         //Convert adc_reading to voltage in mV
-        printf("%d  \n", percent);
+        //printf("%d  \n", percent);
         vTaskDelay(pdMS_TO_TICKS(10));
-//	vTaskDelete(NULL);
+	
 }
+        vTaskDelete(NULL);
 }
 
 //PWM konfigurálása
@@ -205,18 +258,14 @@ void app_main(void)
     gomb_init();
     //Configure PWM
    // set_pwm();
+    adc_charac();
 
-	adc1_config_width(ADC_WIDTH_BIT_12);
-        adc1_config_channel_atten(channel, atten);
-        adc_chars = calloc(1, sizeof(esp_adc_cal_characteristics_t));
-        esp_adc_cal_value_t val_type = esp_adc_cal_characterize(unit, atten, ADC_WIDTH_BIT_12, DEFAULT_VREF, adc_chars);
-        print_char_val_type(val_type);
-
-    xTaskCreate(adc_read_task, "adc_read_task", 2048, NULL, 1, NULL);
-   // xTaskCreatePinnedToCore(pwm, "pwm", 4096, NULL, 5, NULL, 1);
+    xTaskCreate(gomb, "gomb_kiolvasas", 2048, NULL, 4, NULL);    
+    xTaskCreate(adc_read_task, "adc_read_task", 2048, NULL, 4, NULL);
    // vTaskStartScheduler();
 	while(1)
-{vTaskDelay(pdMS_TO_TICKS(10));
+{
+    vTaskDelay(pdMS_TO_TICKS(10));
 }
 }
 
