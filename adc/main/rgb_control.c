@@ -7,20 +7,20 @@
 
 #define LEDC_LS_TIMER          LEDC_TIMER_1
 #define LEDC_LS_MODE           LEDC_LOW_SPEED_MODE
-#define LEDC_LS_CH0_GPIO       (18)                     //RED
-#define LEDC_LS_CH0_CHANNEL    LEDC_CHANNEL_0
-#define LEDC_LS_CH1_GPIO       (23)                      //GREEN
-#define LEDC_LS_CH1_CHANNEL    LEDC_CHANNEL_1
-#define LEDC_LS_CH2_GPIO       (17)                     //BLUE
+#define LEDC_LS_CH2_GPIO       (18)                     //RED
 #define LEDC_LS_CH2_CHANNEL    LEDC_CHANNEL_2
+#define LEDC_LS_CH3_GPIO       (23)                      //GREEN
+#define LEDC_LS_CH3_CHANNEL    LEDC_CHANNEL_3
+#define LEDC_LS_CH4_GPIO       (17)                     //BLUE
+#define LEDC_LS_CH4_CHANNEL    LEDC_CHANNEL_4
 
-#define watt  75
+#define watt  3
 
 void rgb_control(void *pvParameter)
 {
     ledc_timer_config_t rgb_timer = {
         .duty_resolution = LEDC_TIMER_5_BIT, // resolution of PWM duty
-        .freq_hz = 5000,                      // frequency of PWM signal
+        .freq_hz = 500,                      // frequency of PWM signal
         .speed_mode = LEDC_LS_MODE,           // timer mode
         .timer_num = LEDC_LS_TIMER,            // timer index
     };
@@ -29,27 +29,27 @@ void rgb_control(void *pvParameter)
 
     ledc_channel_config_t rgb_red_channel = 
         {
-            .channel    = LEDC_LS_CH0_CHANNEL,
+            .channel    = LEDC_LS_CH2_CHANNEL,
             .duty       = 0,
-            .gpio_num   = LEDC_LS_CH0_GPIO,
+            .gpio_num   = LEDC_LS_CH2_GPIO,
             .speed_mode = LEDC_LS_MODE,
             .hpoint     = 0,
             .timer_sel  = LEDC_LS_TIMER
         };
         ledc_channel_config_t rgb_green_channel = 
         {
-            .channel    = LEDC_LS_CH1_CHANNEL,
+            .channel    = LEDC_LS_CH3_CHANNEL,
             .duty       = 0,
-            .gpio_num   = LEDC_LS_CH1_GPIO,
+            .gpio_num   = LEDC_LS_CH3_GPIO,
             .speed_mode = LEDC_LS_MODE,
             .hpoint     = 0,
             .timer_sel  = LEDC_LS_TIMER
         };
         ledc_channel_config_t rgb_blue_channel = 
         {
-            .channel    = LEDC_LS_CH2_CHANNEL,
-            .duty       = 31,
-            .gpio_num   = LEDC_LS_CH2_GPIO,
+            .channel    = LEDC_LS_CH4_CHANNEL,
+            .duty       = 0,
+            .gpio_num   = LEDC_LS_CH4_GPIO,
             .speed_mode = LEDC_LS_MODE,
             .hpoint     = 0,
             .timer_sel  = LEDC_LS_TIMER
@@ -64,59 +64,62 @@ while (1)
     if (0 == watt)
     {
         ledc_set_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel, 0);
-        ledc_update_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel);
         ledc_set_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel, 0);
-        ledc_update_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel);
         ledc_set_duty(rgb_blue_channel.speed_mode, rgb_blue_channel.channel, 31);
+        ledc_update_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel);
+        ledc_update_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel);
         ledc_update_duty(rgb_blue_channel.speed_mode, rgb_blue_channel.channel);
     }
-    if (1 <= watt && 20 < watt)
+    if (1 <= watt && 20 > watt)
     {
         ledc_set_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel, 0);
-        ledc_update_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel);
-        ledc_set_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel, watt*(124/76));
-        ledc_update_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel);
+        ledc_set_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel, (watt*(124.0/76.0)));
         ledc_set_duty(rgb_blue_channel.speed_mode, rgb_blue_channel.channel, 31);
+        ledc_update_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel);
+        ledc_update_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel);
         ledc_update_duty(rgb_blue_channel.speed_mode, rgb_blue_channel.channel);
     }
-    if (20 <= watt && 39 < watt)
+    if (20 <= watt && 39 > watt)
     {
         ledc_set_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel, 0);
-        ledc_update_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel);
         ledc_set_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel, 31);
+        ledc_set_duty(rgb_blue_channel.speed_mode, rgb_blue_channel.channel, (62.0-(watt*(124.0/76.0))));
+        ledc_update_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel);
         ledc_update_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel);
-        ledc_set_duty(rgb_blue_channel.speed_mode, rgb_blue_channel.channel, 62-(watt*(124/76)));
         ledc_update_duty(rgb_blue_channel.speed_mode, rgb_blue_channel.channel);
+        printf("cica)");
     }
-    if (39 <= watt && 58 < watt)
+    if (39 <= watt && 58 > watt)
     {
-        ledc_set_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel, (watt*(124/76))-62);
-        ledc_update_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel);
+        ledc_set_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel, ((watt*(124.0/76.0))-62.0));
         ledc_set_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel, 31);
-        ledc_update_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel);
         ledc_set_duty(rgb_blue_channel.speed_mode, rgb_blue_channel.channel, 0);
+        ledc_update_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel);
+        ledc_update_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel);
         ledc_update_duty(rgb_blue_channel.speed_mode, rgb_blue_channel.channel);
+        printf("kutya");
     }
-    if (58 <= watt && 75 < watt)
+    if (58 <= watt && 75 > watt)
     {
         ledc_set_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel, 31);
-        ledc_update_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel);
-        ledc_set_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel, 124-(watt*(124/76)));
-        ledc_update_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel);
+        ledc_set_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel, (124.0-(watt*(124.0/76.0))));
         ledc_set_duty(rgb_blue_channel.speed_mode, rgb_blue_channel.channel, 0);
+        ledc_update_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel);
+        ledc_update_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel);
         ledc_update_duty(rgb_blue_channel.speed_mode, rgb_blue_channel.channel);
     }
-    if (0 == watt)
+    if (75 == watt)
     {
         ledc_set_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel, 31);
-        ledc_update_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel);
         ledc_set_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel, 0);
-        ledc_update_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel);
         ledc_set_duty(rgb_blue_channel.speed_mode, rgb_blue_channel.channel, 0);
+        ledc_update_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel);
+        ledc_update_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel);
         ledc_update_duty(rgb_blue_channel.speed_mode, rgb_blue_channel.channel);
+        printf("pina");
     }
-    
-vTaskDelay(pdMS_TO_TICKS(10));
+ 
+vTaskDelay(pdMS_TO_TICKS(100));
 
 
 }

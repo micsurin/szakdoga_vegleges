@@ -14,7 +14,6 @@
 #include "driver/ledc.h"
 #include "soc/mcpwm_reg.h"
 #include "soc/mcpwm_struct.h"
-
 //ADC paraméterek
 #define DEFAULT_VREF    1100        //Use adc2_vref_to_gpio() to obtain a better estimate
 #define NO_OF_SAMPLES   64          //Multisampling
@@ -205,7 +204,7 @@ void adc_read_task(void *pvParameter)
         if (vbat >= Voutcalc )
         {
         dutypercent = Voutcalc/vbat;
-        ledc_set_duty(buck_pwm.speed_mode, buck_pwm.channel,dutypercent*127);
+        ledc_set_duty(buck_pwm.speed_mode, buck_pwm.channel,(int)dutypercent*127);
         ledc_update_duty(buck_pwm.speed_mode, buck_pwm.channel);
         ledc_set_duty(boost_pwm.speed_mode, boost_pwm.channel,0);
         ledc_update_duty(boost_pwm.speed_mode, boost_pwm.channel); 
@@ -213,7 +212,7 @@ void adc_read_task(void *pvParameter)
         else
         {
         dutypercent = 1-(vbat/Voutcalc);
-        ledc_set_duty(boost_pwm.speed_mode, boost_pwm.channel,dutypercent*127);
+        ledc_set_duty(boost_pwm.speed_mode, boost_pwm.channel,(int)dutypercent*127);
         ledc_update_duty(boost_pwm.speed_mode, boost_pwm.channel);
         ledc_set_duty(buck_pwm.speed_mode, buck_pwm.channel,127);
         ledc_update_duty(buck_pwm.speed_mode, buck_pwm.channel); 
@@ -235,7 +234,7 @@ void app_main(void)
     //configure GPIO
     gomb_init();
 
-    xTaskCreate(gomb, "gomb_kiolvasas", 2048, NULL, 4, NULL);    
+    //xTaskCreate(gomb, "gomb_kiolvasas", 2048, NULL, 4, NULL);    
     xTaskCreate(adc_read_task, "adc_read_task", 2048, NULL, 4, NULL);
     xTaskCreate(rgb_control, "rgb vezerles task", 2048, NULL, 4, NULL);
    // vTaskStartScheduler();
