@@ -14,7 +14,7 @@
 #define LEDC_LS_CH4_GPIO       (17)                     //BLUE
 #define LEDC_LS_CH4_CHANNEL    LEDC_CHANNEL_4
 
-#define watt  3
+extern int watt;
 
 void rgb_control(void *pvParameter)
 {
@@ -87,7 +87,6 @@ while (1)
         ledc_update_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel);
         ledc_update_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel);
         ledc_update_duty(rgb_blue_channel.speed_mode, rgb_blue_channel.channel);
-        printf("cica)");
     }
     if (39 <= watt && 58 > watt)
     {
@@ -97,7 +96,6 @@ while (1)
         ledc_update_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel);
         ledc_update_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel);
         ledc_update_duty(rgb_blue_channel.speed_mode, rgb_blue_channel.channel);
-        printf("kutya");
     }
     if (58 <= watt && 75 > watt)
     {
@@ -116,7 +114,6 @@ while (1)
         ledc_update_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel);
         ledc_update_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel);
         ledc_update_duty(rgb_blue_channel.speed_mode, rgb_blue_channel.channel);
-        printf("pina");
     }
  
 vTaskDelay(pdMS_TO_TICKS(100));

@@ -28,11 +28,15 @@
 
 //GPIO paraméterek
 #define gomb1 15
-#define GPIO_INPUT_PIN_SEL ((1ULL<<gomb1))
+#define gomb2 16
+#define GPIO_INPUT_PIN_SEL ((1ULL<<gomb1)|(1ULL<<gomb2))
 
 uint32_t watt = 16;
 
-uint32_t szint;
+uint32_t szint_plusz;
+uint32_t szint_minusz;
+int bekapcs = 0;
+
 
 extern void rgb_control(void *pvParameter);
 
@@ -54,7 +58,8 @@ static esp_adc_cal_characteristics_t *adc_vbat;
 static const adc_channel_t adc_vbat_channel = ADC_CHANNEL_4;     //GPIO32
 static const adc_atten_t adc_vbat_atten = ADC_ATTEN_DB_0;
 static const adc_unit_t adc_vbat_unit = ADC_UNIT_1;
-
+static volatile int varakoz = 500;
+static volatile int folyamatos = 0;
 
 static void check_efuse(void)
 {
@@ -101,23 +106,32 @@ static void IRAM_ATTR gpio_isr_handler(void* arg)
 }
 
 //GOMB kiolvasása
-void gomb(void *pvParameter)
+void telj_gomb(void *pvParameter)
 {
+
     while(1){
-        szint = gpio_get_level(gomb1);
-        if(szint==0){
+        szint_plusz = gpio_get_level(gomb1);
+        szint_minusz = gpio_get_level(gomb2);
+        if(szint_plusz==0){
             printf("\n a gomb meg van nyomva");
+            if(watt<75) watt++;
+            if(folyamatos>=0 && folyamatos < 10) folyamatos++;
         }
-        else
-        {
-            printf("\n a gomb nincs megnyomva");
+        if(szint_minusz==0){
+        printf("\n a gomb meg van nyomva");
+        if(watt>0) watt--;
+        if(folyamatos>=0 && folyamatos < 10) folyamatos++;
         }
-        vTaskDelay(pdMS_TO_TICKS(10));
+        if(szint_minusz && szint_plusz) folyamatos--;
+        if(folyamatos == 10 ) vTaskDelay(pdMS_TO_TICKS(20));
+        if(folyamatos <= 0 ) vTaskDelay(pdMS_TO_TICKS(500));
+        
     }
-
-
+    
 vTaskDelete(NULL);
 }
+
+
 //ADC karakterizáció
 void adc_charac ()
 {
@@ -234,13 +248,15 @@ void app_main(void)
     //configure GPIO
     gomb_init();
 
-    //xTaskCreate(gomb, "gomb_kiolvasas", 2048, NULL, 4, NULL);    
+    xTaskCreate(telj_gomb, "gomb_kiolvasas", 2048, NULL, 4, NULL);    
     xTaskCreate(adc_read_task, "adc_read_task", 2048, NULL, 4, NULL);
     xTaskCreate(rgb_control, "rgb vezerles task", 2048, NULL, 4, NULL);
+    bekapcs = 1;
    // vTaskStartScheduler();
 	while(1)
 {
     vTaskDelay(pdMS_TO_TICKS(10));
+
 }
 }
 
