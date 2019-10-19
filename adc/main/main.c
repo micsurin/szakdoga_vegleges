@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 #include "freertos/FreeRTOS.h"
@@ -10,7 +11,6 @@
 #include "esp_attr.h"
 #include "driver/ledc.h"
 #include "esp_err.h"
-#include "driver/mcpwm.h"
 #include "driver/ledc.h"
 #include "soc/mcpwm_reg.h"
 #include "soc/mcpwm_struct.h"
@@ -31,9 +31,11 @@
 #define gomb1 15
 #define GPIO_INPUT_PIN_SEL ((1ULL<<gomb1))
 
-#define watt 16
+uint32_t watt = 16;
 
 uint32_t szint;
+
+extern void rgb_control(void *pvParameter);
 
 
 
@@ -164,7 +166,7 @@ void adc_read_task(void *pvParameter)
 
     ledc_channel_config_t buck_pwm = {
         .channel    = LEDC_HS_CH0_CHANNEL,
-        .duty       = 0,
+        .duty       = 42, //kezdeti kitöltés, legyen alacsony fesz, hogy ne robbanjon fel ~1,4V
         .gpio_num   = LEDC_HS_CH0_GPIO,
         .speed_mode = LEDC_HS_MODE,
         .hpoint     = 0,
@@ -200,9 +202,9 @@ void adc_read_task(void *pvParameter)
         vbat = (4.2/4095)*vbat_raw;
         Rload = vout/iout;
         Voutcalc = sqrt(watt)*Rload;
-        if (vbat <= Voutcalc )
+        if (vbat >= Voutcalc )
         {
-        dutypercent = vbat/Voutcalc;
+        dutypercent = Voutcalc/vbat;
         ledc_set_duty(buck_pwm.speed_mode, buck_pwm.channel,dutypercent*127);
         ledc_update_duty(buck_pwm.speed_mode, buck_pwm.channel);
         ledc_set_duty(boost_pwm.speed_mode, boost_pwm.channel,0);
@@ -235,6 +237,7 @@ void app_main(void)
 
     xTaskCreate(gomb, "gomb_kiolvasas", 2048, NULL, 4, NULL);    
     xTaskCreate(adc_read_task, "adc_read_task", 2048, NULL, 4, NULL);
+    xTaskCreate(rgb_control, "rgb vezerles task", 2048, NULL, 4, NULL);
    // vTaskStartScheduler();
 	while(1)
 {
