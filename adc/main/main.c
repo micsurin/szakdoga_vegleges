@@ -14,11 +14,13 @@
 #include "driver/ledc.h"
 #include "soc/mcpwm_reg.h"
 #include "soc/mcpwm_struct.h"
+#include "driver/periph_ctrl.h"
+#include "driver/timer.h"
 //ADC paraméterek
-#define DEFAULT_VREF    1100        //Use adc2_vref_to_gpio() to obtain a better estimate
-#define NO_OF_SAMPLES   64          //Multisampling
+#define DEFAULT_VREF    1100        //Referencia feszültség
+#define NO_OF_SAMPLES   64          //Többszörös mintavételezés
 
-//PWM és timer paraméterek
+//PWM és PWM timer paraméterek
 #define LEDC_HS_TIMER          LEDC_TIMER_0
 #define LEDC_HS_MODE           LEDC_HIGH_SPEED_MODE
 #define LEDC_HS_CH0_GPIO       (25)
@@ -37,16 +39,29 @@
 #define GPIO_OUTPUT_PIN_SEL ((1ULL<<en_driver)|(1ULL<<en_3v3)|(1ULL<<en_12v))
 //Interrupt paraméter
 #define ESP_INTR_FLAG_DEFAULT 0
+//Timer paraméterek
+#define TIMER_DIVIDER         2 //80MHz órajel leosztása
+#define TIMER_SCALE           (TIMER_BASE_CLK / TIMER_DIVIDER)
 
-
+//flagek és számlálók az interrupt kezeléséhez
 volatile int bekapcs = 0;
 volatile int fire = 0;
 volatile int fired = 0;
+volatile int timer_run = 0;
+volatile int btnpress = 1;
 
-
+//külső hivatkozás az RGB vezérlő programra
 extern void rgb_control(void *pvParameter);
 
-
+//Timer struktúra
+typedef struct {
+    int type;
+    int timer_group;
+    int timer_idx;
+    uint64_t timer_counter_value;
+} timer_event_t;
+//64 bites integer az időzítő értékének fenntartva
+uint64_t task_counter_value;
 
 
 //kimeneti áram mérés konfiguráció
@@ -93,6 +108,28 @@ static void print_char_val_type(esp_adc_cal_value_t val_type)
 	else {printf("Characterized using default vref\n");}
 
 }
+//időzítő inicializálása
+static void timer_inicializalas()
+{
+    
+    timer_config_t config;
+    config.divider = TIMER_DIVIDER;
+    config.counter_dir = TIMER_COUNT_DOWN;
+    config.counter_en = TIMER_PAUSE;
+    config.alarm_en = TIMER_ALARM_DIS;
+    config.auto_reload = TIMER_AUTORELOAD_DIS;
+
+    timer_init(TIMER_GROUP_0, TIMER_0, &config);
+    timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0x7270E00ULL);
+}
+//Debug, timer állapot kiíratása
+static void inline print_timer_counter(uint64_t counter_value)
+{
+    printf("Counter: 0x%08x%08x\n", (uint32_t) (counter_value >> 32),
+                                    (uint32_t) (counter_value));
+    printf("Time   : %.8f s\n", (double) counter_value / TIMER_SCALE);
+}
+
 //engedélyező jelek inicializálása
 void en_init(void){
     gpio_config_t en_config = {
@@ -117,63 +154,6 @@ void gomb_init(void){
     gpio_set_intr_type(tuzgomb, GPIO_INTR_ANYEDGE);
 }
 
-//tovabbi az input interrupthoz a gyorsabb reakcio erdekeben
-static xQueueHandle gpio_evt_queue = NULL;                                  //ez kell
-
-static void IRAM_ATTR gpio_isr_handler(void* arg)                           //ez kell innentől
-{
-    BaseType_t gpio_num = (BaseType_t) arg;
-    xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
-}                                                           
-
-static void interrupt_kiertekeles(void* arg)
-{
-    int io_num;
-    while(1) 
-    {
-        if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) 
-        {
-            printf("GPIO[%d] intr, val: %d\n", io_num, gpio_get_level(io_num));
-            
-            if(io_num == tuzgomb)
-            {
-                    if(gpio_get_level(tuzgomb))
-                        fire = 0;
-                    else
-                        fire = 1;
-
-            }
-        }
-    }
-}    
-// a teljesítményszabályozó gombok működése
-uint32_t watt = 16;
-uint32_t szint_plusz;
-uint32_t szint_minusz;
-void telj_gomb(void *pvParameter)
-{
-
-    while(1){
-        szint_plusz = gpio_get_level(gomb1);
-        szint_minusz = gpio_get_level(gomb2);
-        if(szint_plusz==0){
-            printf("\n a gomb meg van nyomva");
-            if(watt<75) watt++;
-//            if(folyamatos>=0 && folyamatos < 10) folyamatos++;
-        }
-        if(szint_minusz==0){
-        printf("\n a gomb meg van nyomva");
-        if(watt>0) watt--;
-//        if(folyamatos>=0 && folyamatos < 10) folyamatos++;
-        }
-//        if(szint_minusz && szint_plusz) folyamatos--;
- //       if(folyamatos == 10 ) vTaskDelay(pdMS_TO_TICKS(20));
- //       if(folyamatos <= 0 ) vTaskDelay(pdMS_TO_TICKS(500));
-        vTaskDelay(pdMS_TO_TICKS(100));
-    }
-    
-vTaskDelete(NULL);
-}
 //ADC karakterizáció
 void adc_charac ()
 {
@@ -196,6 +176,130 @@ void adc_charac ()
   
 }
 
+//tovabbi az input interrupthoz a gyorsabb reakcio erdekeben
+static xQueueHandle gpio_evt_queue = NULL;
+
+static void IRAM_ATTR gpio_isr_handler(void* arg)
+{
+    BaseType_t gpio_num = (BaseType_t) arg;
+    xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
+}
+
+
+uint64_t task_counter_value;
+
+//időzítő számlálójának túlcsordulás lekezelése
+void timer_control (void *pvParameter){
+    while (1)
+    {
+        timer_get_counter_value(TIMER_GROUP_0, TIMER_0, &task_counter_value);
+        if (task_counter_value > 0xE4E1C00ULL)
+        {
+            timer_pause(TIMER_GROUP_0, TIMER_0);
+            timer_run=0;
+        }
+ /*       else
+        {
+            timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0x7270E00ULL);
+            timer_start(TIMER_GROUP_0, TIMER_0);
+        }*/
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
+//időzítő indítása függvény
+void timer_inditas (){
+    timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0x7270E00ULL);
+    timer_start(TIMER_GROUP_0, TIMER_0);
+    timer_run=1;
+    }
+//Interrupt kiértékelése a tűzgombról
+static void interrupt_kiertekeles(void* arg)
+{
+    int io_num;
+    while(1) 
+    {   timer_get_counter_value(TIMER_GROUP_0, TIMER_0, &task_counter_value);
+        if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) 
+        {
+            printf("GPIO[%d] intr, val: %d\n", io_num, gpio_get_level(io_num));
+            
+            if(io_num == tuzgomb)
+            {
+                    if(gpio_get_level(tuzgomb))
+                        
+                            fire = 0;
+                        
+                    else{
+                        
+                        fire = 1;
+                        printf("\nallapotok: btnpress=%d, timer_run=%d, task_counter_value=%lld\n, ami nagyobb mint %lld",btnpress,timer_run,task_counter_value,0x7270E00ULL);
+                        if (timer_run==0/* && task_counter_value == 0x7270E00ULL*/ ) //nem fut a timer, nincs bekapcsolva
+                        {
+                            timer_inditas();
+                            btnpress++;
+                            printf("timer_inditos_szakaszban vagyok\n");
+                        }
+                        if(timer_run==1 && bekapcs==0)
+                        {
+                            btnpress++;   //fut a timer de nem tudjuk be kell-e kapcsolni
+                            if(btnpress == 5)
+                            {
+                                bekapcs=1;
+                                timer_pause(TIMER_GROUP_0, TIMER_0);
+                                timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0x7270E00ULL);
+                                btnpress = 1;
+                            }
+                            printf("a gomb leptetos szakaszban vagyok\n");
+                            printf("a gombnyomasok erteke %d\n",btnpress);
+                        } 
+                        if(timer_run==1 && bekapcs==1)
+                        {
+                            btnpress++;   //fut a timer de nem tudjuk be kell-e kapcsolni
+                            if(btnpress == 5)
+                            {
+                                bekapcs=0;
+                                timer_pause(TIMER_GROUP_0, TIMER_0);
+                                timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0x7270E00ULL);
+                                btnpress = 1;
+                            }
+                            printf("a gomb leptetos szakaszban vagyok\n");
+                            printf("a gombnyomasok erteke %d\n",btnpress);
+                        } 
+                        if (timer_run==0 && task_counter_value != 0x7270E00ULL)  //lejárt a timer meglessük mizu
+                        {
+                            printf("tulcsordult a timer, a gombnyomasok erteke %d",btnpress);
+                            timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0x7270E00ULL);
+                            btnpress = 1;
+                            
+                        }
+                    }
+            }
+        }
+    }
+}    
+// a teljesítményszabályozó gombok működéséhez szükséges változók
+uint32_t watt = 16;
+uint32_t szint_plusz;
+uint32_t szint_minusz;
+void telj_gomb(void *pvParameter)
+{
+
+    while(1){
+        szint_plusz = gpio_get_level(gomb1);
+        szint_minusz = gpio_get_level(gomb2);
+        if(szint_plusz==0){
+            printf("\n a gomb meg van nyomva");
+            if(watt<75) watt++;
+        }
+        if(szint_minusz==0){
+        printf("\n a gomb meg van nyomva");
+        if(watt>0) watt--;
+        }
+        vTaskDelay(pdMS_TO_TICKS(200));
+    }
+    
+vTaskDelete(NULL);
+}
+
 //pwm timer konfiguráció
  ledc_timer_config_t ledc_timer = {
     .duty_resolution = LEDC_TIMER_7_BIT,
@@ -203,6 +307,11 @@ void adc_charac ()
     .speed_mode = LEDC_HS_MODE,
     .timer_num = LEDC_HS_TIMER
 };
+
+
+
+
+
 //változók deklarálása a méréshez/szabályozáshoz
 uint32_t iout_raw;
 uint32_t vout_raw;
@@ -214,7 +323,7 @@ float Rload;
 float Voutcalc;
 float dutypercent;
 
-// ADC kiolvasása task
+// Teljesítményszabályozás megvalósítása
 void telj_szabalyozas(void *pvParameter)
 {
     ledc_timer_config(&ledc_timer);
@@ -273,9 +382,7 @@ void telj_szabalyozas(void *pvParameter)
         ledc_update_duty(buck_pwm.speed_mode, buck_pwm.channel); 
         }
         vTaskDelay(pdMS_TO_TICKS(10));
-	
 }
-        //vTaskDelete(NULL);
 }
 
 
@@ -288,20 +395,25 @@ void app_main(void)
     //configure GPIO
     gomb_init();
     en_init();
+    //timer beállítása, timer túlcsordulásának lekezelése
+    timer_inicializalas();
+    xTaskCreate(timer_control, "timer_control", 2048, NULL, 4, NULL);
     //interrupt setup
     gpio_evt_queue = xQueueCreate(10, sizeof(BaseType_t));
     xTaskCreate(interrupt_kiertekeles, "vEval_programme_task", 2048, NULL, 10, NULL);
     gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
-    gpio_isr_handler_add(tuzgomb, gpio_isr_handler, (void*) tuzgomb);
+    gpio_isr_handler_add(tuzgomb, gpio_isr_handler, (void*) tuzgomb); //interrupt csatolása a tűzgombhoz
 
     TaskHandle_t xHandle = NULL;
     xTaskCreate(telj_gomb, "gomb_kiolvasas", 2048, NULL, 4, NULL); 
     
     xTaskCreate(rgb_control, "rgb vezerles task", 2048, NULL, 4, NULL);
-    bekapcs = 1;
+    //bekapcs = 1;
    // vTaskStartScheduler();
 	while(1)
 {
+    timer_get_counter_value(TIMER_GROUP_0, TIMER_0, &task_counter_value); 
+    print_timer_counter(task_counter_value);
     if(fire){
     xTaskCreate(telj_szabalyozas, "adc_read_task", 2048, NULL, 4, &xHandle);
     fired=1;
@@ -311,7 +423,7 @@ void app_main(void)
          vTaskDelete( xHandle );
          fired=0;
     }
-    printf("%d\n", fired);
+    printf("%d\n", bekapcs);
     vTaskDelay(pdMS_TO_TICKS(100));
 
 }
