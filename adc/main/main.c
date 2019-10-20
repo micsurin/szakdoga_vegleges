@@ -28,14 +28,16 @@
 #define LEDC_HS_CH1_GPIO       (26)
 #define LEDC_HS_CH1_CHANNEL    LEDC_CHANNEL_1
 
-//GPIO paraméterek
+//GPIO paraméterek definiálása
+#define USB_state 13
+#define CHRGSTAT 4
 #define en_driver 23
 #define en_3v3 22
 #define en_12v 21
 #define tuzgomb 15
-#define gomb1 13
+#define gomb1 12
 #define gomb2 14
-#define GPIO_INPUT_PIN_SEL ((1ULL<<gomb1)|(1ULL<<gomb2)|(1ULL<<tuzgomb))
+#define GPIO_INPUT_PIN_SEL ((1ULL<<gomb1)|(1ULL<<gomb2)|(1ULL<<tuzgomb)|(1ULL<<USB_state)|(1ULL<<CHRGSTAT))
 #define GPIO_OUTPUT_PIN_SEL ((1ULL<<en_driver)|(1ULL<<en_3v3)|(1ULL<<en_12v))
 //Interrupt paraméter
 #define ESP_INTR_FLAG_DEFAULT 0
@@ -49,6 +51,9 @@ volatile int fire = 0;
 volatile int fired = 0;
 volatile int timer_run = 0;
 volatile int btnpress = 1;
+//
+int usb_bedugva = 0;
+int chargestate;
 
 //külső hivatkozás az RGB vezérlő programra
 extern void rgb_control(void *pvParameter);
@@ -79,8 +84,11 @@ static esp_adc_cal_characteristics_t *adc_vbat;
 static const adc_channel_t adc_vbat_channel = ADC_CHANNEL_4;     //GPIO32
 static const adc_atten_t adc_vbat_atten = ADC_ATTEN_DB_0;
 static const adc_unit_t adc_vbat_unit = ADC_UNIT_1;
-static volatile int varakoz = 500;
-static volatile int folyamatos = 0;
+//thermisztor mérés konfiguráció
+static esp_adc_cal_characteristics_t *adc_therm;
+static const adc_channel_t adc_therm_channel = ADC_CHANNEL_5;     //GPIO33
+static const adc_atten_t adc_therm_atten = ADC_ATTEN_DB_0;
+static const adc_unit_t adc_therm_unit = ADC_UNIT_1;
 
 static void check_efuse(void)
 {
@@ -151,6 +159,8 @@ void gomb_init(void){
         .pull_up_en = 1
     };
     gpio_config(&gomb_config);
+    gpio_pullup_dis(USB_state);
+    gpio_pulldown_en(USB_state);
     gpio_set_intr_type(tuzgomb, GPIO_INTR_ANYEDGE);
 }
 
@@ -173,7 +183,11 @@ void adc_charac ()
 	adc_vbat = calloc(1, sizeof(esp_adc_cal_characteristics_t));
 	esp_adc_cal_value_t vbat_val_type = esp_adc_cal_characterize(adc_vbat_unit, adc_vbat_atten, ADC_WIDTH_BIT_12, DEFAULT_VREF, adc_vbat);
 	print_char_val_type(vbat_val_type);    
-  
+    //Thermisztor karakterizáció
+    adc1_config_channel_atten(adc_therm_channel, adc_therm_atten);
+	adc_therm = calloc(1, sizeof(esp_adc_cal_characteristics_t));
+	esp_adc_cal_value_t therm_val_type = esp_adc_cal_characterize(adc_therm_unit, adc_therm_atten, ADC_WIDTH_BIT_12, DEFAULT_VREF, adc_therm);
+	print_char_val_type(therm_val_type);
 }
 
 //tovabbi az input interrupthoz a gyorsabb reakcio erdekeben
@@ -307,8 +321,61 @@ vTaskDelete(NULL);
     .speed_mode = LEDC_HS_MODE,
     .timer_num = LEDC_HS_TIMER
 };
+//interrupt letiltása flag
+volatile int int_disable = 0;
+int therm_raw;
+//engedélyező kimenetek kezelése
+void enable_outputs (void*pvParameter)
+{
+    while (1)
+    {
+        usb_bedugva = gpio_get_level(USB_state);
+        chargestate = gpio_get_level(CHRGSTAT);
+        for (int i = 0; i < NO_OF_SAMPLES; i++)
+	   {
+            therm_raw += adc1_get_raw((adc1_channel_t)adc_therm_channel);
+       };
+        therm_raw /= NO_OF_SAMPLES;
+        if (therm_raw >= 3723)
+        {
+            gpio_set_level(en_driver, 0);
+            gpio_set_level(en_3v3, 0);
+            gpio_set_level(en_12v, 0);
+            int_disable = 1;
+        }
+        else
+        {
+            if(bekapcs == 1)
+            {
+                gpio_set_level(en_driver, 1);
+                gpio_set_level(en_3v3, 1);
+                gpio_set_level(en_12v, 1);
+                int_disable = 0;
+            }
+            if(bekapcs == 0)
+            {
+                if (gpio_get_level(USB_state) > 0)
+                {
+                    gpio_set_level(en_driver, 0);
+                    gpio_set_level(en_3v3, 1);
+                    gpio_set_level(en_12v, 0);
+                    int_disable = 1;
+                }
+                else
+                {
+                    gpio_set_level(en_driver, 0);
+                    gpio_set_level(en_3v3, 0);
+                    gpio_set_level(en_12v, 0);
+                    int_disable = 0;
+                }
+            
 
-
+            }
+        }   
+    vTaskDelay(pdMS_TO_TICKS(10));
+    }
+    
+}
 
 
 
@@ -400,22 +467,34 @@ void app_main(void)
     xTaskCreate(timer_control, "timer_control", 2048, NULL, 4, NULL);
     //interrupt setup
     gpio_evt_queue = xQueueCreate(10, sizeof(BaseType_t));
-    xTaskCreate(interrupt_kiertekeles, "vEval_programme_task", 2048, NULL, 10, NULL);
+    xTaskCreatePinnedToCore(interrupt_kiertekeles, "vEval_programme_task", 2048, NULL, 10, NULL, 1);
     gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
     gpio_isr_handler_add(tuzgomb, gpio_isr_handler, (void*) tuzgomb); //interrupt csatolása a tűzgombhoz
 
     TaskHandle_t xHandle = NULL;
     xTaskCreate(telj_gomb, "gomb_kiolvasas", 2048, NULL, 4, NULL); 
-    
-    xTaskCreate(rgb_control, "rgb vezerles task", 2048, NULL, 4, NULL);
-    //bekapcs = 1;
-   // vTaskStartScheduler();
+
+    xTaskCreatePinnedToCore(enable_outputs, "kimenetek engedelyezese", 2048, NULL, 4, NULL, 0);
+    xTaskCreatePinnedToCore(rgb_control, "rgb vezerles task", 2048, NULL, 4, NULL, 0);
+
 	while(1)
 {
     timer_get_counter_value(TIMER_GROUP_0, TIMER_0, &task_counter_value); 
     print_timer_counter(task_counter_value);
+    //interrupt kikapcsolása
+    if (int_disable)
+    {
+        gpio_intr_disable(tuzgomb);
+
+    }
+    else
+    {
+        gpio_intr_enable(tuzgomb);
+    }
+       
+    //interrupt hatására a teljesítmény szabályozás task létrehozása, majd törlése
     if(fire){
-    xTaskCreate(telj_szabalyozas, "adc_read_task", 2048, NULL, 4, &xHandle);
+    xTaskCreatePinnedToCore(telj_szabalyozas, "adc_read_task", 2048, NULL, 4, &xHandle, 1);
     fired=1;
     }
     if(!fire && fired==1)

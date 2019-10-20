@@ -15,7 +15,8 @@
 #define LEDC_LS_CH4_CHANNEL    LEDC_CHANNEL_4
 
 extern int watt;
-
+extern int usb_bedugva;
+extern int chargestate;
 void rgb_control(void *pvParameter)
 {
     ledc_timer_config_t rgb_timer = {
@@ -60,8 +61,9 @@ void rgb_control(void *pvParameter)
     ledc_channel_config(&rgb_blue_channel);
 
 while (1)
+{   if(usb_bedugva == 0)
 {
-    if (0 == watt)
+if (0 == watt)
     {
         ledc_set_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel, 0);
         ledc_set_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel, 0);
@@ -115,7 +117,30 @@ while (1)
         ledc_update_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel);
         ledc_update_duty(rgb_blue_channel.speed_mode, rgb_blue_channel.channel);
     }
- 
+}
+else
+{
+    if (chargestate == 1)
+    {
+        ledc_set_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel, 31);
+        ledc_set_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel, 0);
+        ledc_set_duty(rgb_blue_channel.speed_mode, rgb_blue_channel.channel, 0);
+        ledc_update_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel);
+        ledc_update_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel);
+        ledc_update_duty(rgb_blue_channel.speed_mode, rgb_blue_channel.channel);
+    }
+    else
+    {
+        ledc_set_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel, 0);
+        ledc_set_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel, 31);
+        ledc_set_duty(rgb_blue_channel.speed_mode, rgb_blue_channel.channel, 0);
+        ledc_update_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel);
+        ledc_update_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel);
+        ledc_update_duty(rgb_blue_channel.speed_mode, rgb_blue_channel.channel);
+    }
+    
+    
+}
 vTaskDelay(pdMS_TO_TICKS(100));
 
 
