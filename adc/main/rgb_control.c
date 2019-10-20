@@ -9,7 +9,7 @@
 #define LEDC_LS_MODE           LEDC_LOW_SPEED_MODE
 #define LEDC_LS_CH2_GPIO       (18)                     //RED
 #define LEDC_LS_CH2_CHANNEL    LEDC_CHANNEL_2
-#define LEDC_LS_CH3_GPIO       (23)                      //GREEN
+#define LEDC_LS_CH3_GPIO       (5)                      //GREEN
 #define LEDC_LS_CH3_CHANNEL    LEDC_CHANNEL_3
 #define LEDC_LS_CH4_GPIO       (17)                     //BLUE
 #define LEDC_LS_CH4_CHANNEL    LEDC_CHANNEL_4

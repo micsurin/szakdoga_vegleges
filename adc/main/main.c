@@ -27,15 +27,21 @@
 #define LEDC_HS_CH1_CHANNEL    LEDC_CHANNEL_1
 
 //GPIO paraméterek
-#define gomb1 15
-#define gomb2 16
-#define GPIO_INPUT_PIN_SEL ((1ULL<<gomb1)|(1ULL<<gomb2))
+#define en_driver 23
+#define en_3v3 22
+#define en_12v 21
+#define tuzgomb 15
+#define gomb1 13
+#define gomb2 14
+#define GPIO_INPUT_PIN_SEL ((1ULL<<gomb1)|(1ULL<<gomb2)|(1ULL<<tuzgomb))
+#define GPIO_OUTPUT_PIN_SEL ((1ULL<<en_driver)|(1ULL<<en_3v3)|(1ULL<<en_12v))
+//Interrupt paraméter
+#define ESP_INTR_FLAG_DEFAULT 0
 
-uint32_t watt = 16;
 
-uint32_t szint_plusz;
-uint32_t szint_minusz;
-int bekapcs = 0;
+volatile int bekapcs = 0;
+volatile int fire = 0;
+volatile int fired = 0;
 
 
 extern void rgb_control(void *pvParameter);
@@ -87,25 +93,63 @@ static void print_char_val_type(esp_adc_cal_value_t val_type)
 	else {printf("Characterized using default vref\n");}
 
 }
-//GPIO inicializálása
+//engedélyező jelek inicializálása
+void en_init(void){
+    gpio_config_t en_config = {
+        .intr_type = GPIO_PIN_INTR_DISABLE,
+        .pin_bit_mask = GPIO_OUTPUT_PIN_SEL,
+        .mode = GPIO_MODE_OUTPUT,
+        .pull_up_en = 0,
+        .pull_down_en = 0
+    };
+    gpio_config(&en_config);
+
+}
+//Gombok inicializálása
 void gomb_init(void){
-  	 gpio_config_t input_config = {
-        .intr_type = GPIO_PIN_INTR_ANYEDGE,
+  	 gpio_config_t gomb_config = {
+        .intr_type = GPIO_PIN_INTR_DISABLE,
         .pin_bit_mask = GPIO_INPUT_PIN_SEL,
         .mode = GPIO_MODE_INPUT,
         .pull_up_en = 1
     };
-    gpio_config(&input_config);
+    gpio_config(&gomb_config);
+    gpio_set_intr_type(tuzgomb, GPIO_INTR_ANYEDGE);
 }
-static xQueueHandle gpio_evt_queue = NULL;
 
-static void IRAM_ATTR gpio_isr_handler(void* arg)
+//tovabbi az input interrupthoz a gyorsabb reakcio erdekeben
+static xQueueHandle gpio_evt_queue = NULL;                                  //ez kell
+
+static void IRAM_ATTR gpio_isr_handler(void* arg)                           //ez kell innentől
 {
     BaseType_t gpio_num = (BaseType_t) arg;
     xQueueSendFromISR(gpio_evt_queue, &gpio_num, NULL);
-}
+}                                                           
 
-//GOMB kiolvasása
+static void interrupt_kiertekeles(void* arg)
+{
+    int io_num;
+    while(1) 
+    {
+        if(xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY)) 
+        {
+            printf("GPIO[%d] intr, val: %d\n", io_num, gpio_get_level(io_num));
+            
+            if(io_num == tuzgomb)
+            {
+                    if(gpio_get_level(tuzgomb))
+                        fire = 0;
+                    else
+                        fire = 1;
+
+            }
+        }
+    }
+}    
+// a teljesítményszabályozó gombok működése
+uint32_t watt = 16;
+uint32_t szint_plusz;
+uint32_t szint_minusz;
 void telj_gomb(void *pvParameter)
 {
 
@@ -115,23 +159,21 @@ void telj_gomb(void *pvParameter)
         if(szint_plusz==0){
             printf("\n a gomb meg van nyomva");
             if(watt<75) watt++;
-            if(folyamatos>=0 && folyamatos < 10) folyamatos++;
+//            if(folyamatos>=0 && folyamatos < 10) folyamatos++;
         }
         if(szint_minusz==0){
         printf("\n a gomb meg van nyomva");
         if(watt>0) watt--;
-        if(folyamatos>=0 && folyamatos < 10) folyamatos++;
+//        if(folyamatos>=0 && folyamatos < 10) folyamatos++;
         }
-        if(szint_minusz && szint_plusz) folyamatos--;
-        if(folyamatos == 10 ) vTaskDelay(pdMS_TO_TICKS(20));
-        if(folyamatos <= 0 ) vTaskDelay(pdMS_TO_TICKS(500));
-        
+//        if(szint_minusz && szint_plusz) folyamatos--;
+ //       if(folyamatos == 10 ) vTaskDelay(pdMS_TO_TICKS(20));
+ //       if(folyamatos <= 0 ) vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
     
 vTaskDelete(NULL);
 }
-
-
 //ADC karakterizáció
 void adc_charac ()
 {
@@ -173,10 +215,9 @@ float Voutcalc;
 float dutypercent;
 
 // ADC kiolvasása task
-void adc_read_task(void *pvParameter)
+void telj_szabalyozas(void *pvParameter)
 {
     ledc_timer_config(&ledc_timer);
-
     ledc_channel_config_t buck_pwm = {
         .channel    = LEDC_HS_CH0_CHANNEL,
         .duty       = 42, //kezdeti kitöltés, legyen alacsony fesz, hogy ne robbanjon fel ~1,4V
@@ -218,7 +259,7 @@ void adc_read_task(void *pvParameter)
         if (vbat >= Voutcalc )
         {
         dutypercent = Voutcalc/vbat;
-        ledc_set_duty(buck_pwm.speed_mode, buck_pwm.channel,(int)dutypercent*127);
+        ledc_set_duty(buck_pwm.speed_mode, buck_pwm.channel,dutypercent*127.0);
         ledc_update_duty(buck_pwm.speed_mode, buck_pwm.channel);
         ledc_set_duty(boost_pwm.speed_mode, boost_pwm.channel,0);
         ledc_update_duty(boost_pwm.speed_mode, boost_pwm.channel); 
@@ -226,16 +267,15 @@ void adc_read_task(void *pvParameter)
         else
         {
         dutypercent = 1-(vbat/Voutcalc);
-        ledc_set_duty(boost_pwm.speed_mode, boost_pwm.channel,(int)dutypercent*127);
+        ledc_set_duty(boost_pwm.speed_mode, boost_pwm.channel,dutypercent*127.0);
         ledc_update_duty(boost_pwm.speed_mode, boost_pwm.channel);
         ledc_set_duty(buck_pwm.speed_mode, buck_pwm.channel,127);
         ledc_update_duty(buck_pwm.speed_mode, buck_pwm.channel); 
         }
-
         vTaskDelay(pdMS_TO_TICKS(10));
 	
 }
-        vTaskDelete(NULL);
+        //vTaskDelete(NULL);
 }
 
 
@@ -247,15 +287,32 @@ void app_main(void)
     adc_charac();
     //configure GPIO
     gomb_init();
+    en_init();
+    //interrupt setup
+    gpio_evt_queue = xQueueCreate(10, sizeof(BaseType_t));
+    xTaskCreate(interrupt_kiertekeles, "vEval_programme_task", 2048, NULL, 10, NULL);
+    gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
+    gpio_isr_handler_add(tuzgomb, gpio_isr_handler, (void*) tuzgomb);
 
-    xTaskCreate(telj_gomb, "gomb_kiolvasas", 2048, NULL, 4, NULL);    
-    xTaskCreate(adc_read_task, "adc_read_task", 2048, NULL, 4, NULL);
+    TaskHandle_t xHandle = NULL;
+    xTaskCreate(telj_gomb, "gomb_kiolvasas", 2048, NULL, 4, NULL); 
+    
     xTaskCreate(rgb_control, "rgb vezerles task", 2048, NULL, 4, NULL);
     bekapcs = 1;
    // vTaskStartScheduler();
 	while(1)
 {
-    vTaskDelay(pdMS_TO_TICKS(10));
+    if(fire){
+    xTaskCreate(telj_szabalyozas, "adc_read_task", 2048, NULL, 4, &xHandle);
+    fired=1;
+    }
+    if(!fire && fired==1)
+    {
+         vTaskDelete( xHandle );
+         fired=0;
+    }
+    printf("%d\n", fired);
+    vTaskDelay(pdMS_TO_TICKS(100));
 
 }
 }
