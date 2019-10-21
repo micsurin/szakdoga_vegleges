@@ -336,7 +336,7 @@ void enable_outputs (void*pvParameter)
             therm_raw += adc1_get_raw((adc1_channel_t)adc_therm_channel);
        };
         therm_raw /= NO_OF_SAMPLES;
-        if (therm_raw >= 3723)
+        if (therm_raw >= 2717)
         {
             gpio_set_level(en_driver, 0);
             gpio_set_level(en_3v3, 0);
