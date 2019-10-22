@@ -124,7 +124,7 @@ else
     {
         ledc_set_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel, 31);
         ledc_set_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel, 0);
-        ledc_set_duty(rgb_blue_channel.speed_mode, rgb_blue_channel.channel, 0);
+        ledc_set_duty(rgb_blue_channel.speed_mode, rgb_blue_channel.channel, 31);
         ledc_update_duty(rgb_red_channel.speed_mode, rgb_red_channel.channel);
         ledc_update_duty(rgb_green_channel.speed_mode, rgb_green_channel.channel);
         ledc_update_duty(rgb_blue_channel.speed_mode, rgb_blue_channel.channel);
