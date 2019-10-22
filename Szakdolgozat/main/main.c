@@ -224,11 +224,6 @@ void timer_control(void *pvParameter)
             timer_pause(TIMER_GROUP_0, TIMER_0);
             timer_run = 0;
         }
-        /*       else
-        {
-            timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0x7270E00ULL);
-            timer_start(TIMER_GROUP_0, TIMER_0);
-        }*/
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
