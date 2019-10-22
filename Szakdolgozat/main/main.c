@@ -29,6 +29,7 @@
 #define LEDC_HS_CH1_CHANNEL    LEDC_CHANNEL_1
 
 //GPIO paraméterek definiálása
+#define overheat 19
 #define USB_state 13
 #define CHRGSTAT 4
 #define en_driver 23
@@ -38,7 +39,7 @@
 #define gomb1 12
 #define gomb2 14
 #define GPIO_INPUT_PIN_SEL ((1ULL<<gomb1)|(1ULL<<gomb2)|(1ULL<<tuzgomb)|(1ULL<<USB_state)|(1ULL<<CHRGSTAT))
-#define GPIO_OUTPUT_PIN_SEL ((1ULL<<en_driver)|(1ULL<<en_3v3)|(1ULL<<en_12v))
+#define GPIO_OUTPUT_PIN_SEL ((1ULL<<en_driver)|(1ULL<<en_3v3)|(1ULL<<en_12v)|(1ULL<<overheat))
 //Interrupt paraméter
 #define ESP_INTR_FLAG_DEFAULT 0
 //Timer paraméterek
@@ -341,6 +342,7 @@ void enable_outputs (void*pvParameter)
             gpio_set_level(en_driver, 0);
             gpio_set_level(en_3v3, 0);
             gpio_set_level(en_12v, 0);
+            gpio_set_level(overheat, 1);
             int_disable = 1;
         }
         else
@@ -350,6 +352,7 @@ void enable_outputs (void*pvParameter)
                 gpio_set_level(en_driver, 1);
                 gpio_set_level(en_3v3, 1);
                 gpio_set_level(en_12v, 1);
+                gpio_set_level(overheat, 0);
                 int_disable = 0;
             }
             if(bekapcs == 0)
@@ -359,6 +362,7 @@ void enable_outputs (void*pvParameter)
                     gpio_set_level(en_driver, 0);
                     gpio_set_level(en_3v3, 1);
                     gpio_set_level(en_12v, 0);
+                    gpio_set_level(overheat, 0);
                     int_disable = 1;
                 }
                 else
@@ -366,6 +370,7 @@ void enable_outputs (void*pvParameter)
                     gpio_set_level(en_driver, 0);
                     gpio_set_level(en_3v3, 0);
                     gpio_set_level(en_12v, 0);
+                    gpio_set_level(overheat, 0);
                     int_disable = 0;
                 }
             
