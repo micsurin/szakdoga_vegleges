@@ -11,9 +11,6 @@
 #include "esp_attr.h"
 #include "driver/ledc.h"
 #include "esp_err.h"
-#include "driver/ledc.h"
-#include "soc/mcpwm_reg.h"
-#include "soc/mcpwm_struct.h"
 #include "driver/periph_ctrl.h"
 #include "driver/timer.h"
 //ADC paraméterek
@@ -52,6 +49,17 @@ volatile int fire = 0;
 volatile int fired = 0;
 volatile int timer_run = 0;
 volatile int btnpress = 1;
+
+//változók deklarálása a méréshez/szabályozáshoz
+uint32_t iout_raw;
+uint32_t vout_raw;
+uint32_t vbat_raw;
+float iout;
+float vout;
+float vbat;
+float Rload;
+float Voutcalc;
+float dutypercent;
 //
 int usb_bedugva = 0;
 int chargestate;
@@ -162,7 +170,7 @@ void en_init(void)
         .pull_down_en = 0};
     gpio_config(&en_config);
 }
-//Gombok inicializálása
+//bemenetek inicializálása
 void gomb_init(void)
 {
     gpio_config_t gomb_config = {
@@ -177,10 +185,10 @@ void gomb_init(void)
 }
 
 //ADC karakterizáció
-void adc_charac()
+void adc_karak()
 {
-    //Iout karakterizáció
     adc1_config_width(ADC_WIDTH_BIT_12);
+    //Iout karakterizáció
     adc1_config_channel_atten(adc_iout_channel, adc_iout_atten);
     adc_iout = calloc(1, sizeof(esp_adc_cal_characteristics_t));
     esp_adc_cal_value_t iout_val_type = esp_adc_cal_characterize(adc_iout_unit, adc_iout_atten, ADC_WIDTH_BIT_12, DEFAULT_VREF, adc_iout);
@@ -348,7 +356,7 @@ void enable_outputs(void *pvParameter)
             therm_raw += adc1_get_raw((adc1_channel_t)adc_therm_channel);
         }
         therm_raw /= NO_OF_SAMPLES;
-        if (therm_raw >= 2717)
+        if (therm_raw >= 2162 | vbat < (float)3.5)
         {
             gpio_set_level(en_driver, 0);
             gpio_set_level(en_3v3, 0);
@@ -390,16 +398,6 @@ void enable_outputs(void *pvParameter)
     }
 }
 
-//változók deklarálása a méréshez/szabályozáshoz
-uint32_t iout_raw;
-uint32_t vout_raw;
-uint32_t vbat_raw;
-float iout;
-float vout;
-float vbat;
-float Rload;
-float Voutcalc;
-float dutypercent;
 
 // Teljesítményszabályozás megvalósítása
 void telj_szabalyozas(void *pvParameter)
@@ -463,10 +461,10 @@ void telj_szabalyozas(void *pvParameter)
 
 void app_main(void)
 {
+    //Characterize ADC
+    adc_karak();
     //Check if Two Point or Vref are burned into eFuse
     check_efuse();
-    //Characterize ADC
-    adc_charac();
     //configure GPIO
     gomb_init();
     en_init();
