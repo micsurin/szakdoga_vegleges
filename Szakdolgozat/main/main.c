@@ -66,18 +66,8 @@ int chargestate;
 
 //külső hivatkozás az RGB vezérlő programra
 extern void rgb_control(void *pvParameter);
-
-//Timer struktúra
-typedef struct
-{
-    int type;
-    int timer_group;
-    int timer_idx;
-    uint64_t timer_counter_value;
-} timer_event_t;
 //64 bites integer az időzítő értékének fenntartva
 uint64_t task_counter_value;
-
 //kimeneti áram mérés konfiguráció
 static esp_adc_cal_characteristics_t *adc_iout;
 static const adc_channel_t adc_iout_channel = ADC_CHANNEL_6; //GPIO34
@@ -210,7 +200,7 @@ void adc_karak()
     print_char_val_type(therm_val_type);
 }
 
-//tovabbi az input interrupthoz a gyorsabb reakcio erdekeben
+//az input interrupt gyorsabb kezeléséhez szükséges változó és függvény
 static xQueueHandle gpio_evt_queue = NULL;
 
 static void IRAM_ATTR gpio_isr_handler(void *arg)
@@ -473,9 +463,10 @@ void app_main(void)
     xTaskCreate(timer_control, "timer_control", 2048, NULL, 4, NULL);
     //interrupt setup
     gpio_evt_queue = xQueueCreate(10, sizeof(BaseType_t));
-    xTaskCreatePinnedToCore(interrupt_kiertekeles, "vEval_programme_task", 2048, NULL, 10, NULL, 1);
     gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
     gpio_isr_handler_add(tuzgomb, gpio_isr_handler, (void *)tuzgomb); //interrupt csatolása a tűzgombhoz
+    
+    xTaskCreatePinnedToCore(interrupt_kiertekeles, "vEval_programme_task", 2048, NULL, 10, NULL, 1);
 
     TaskHandle_t xHandle = NULL;
     xTaskCreate(telj_gomb, "gomb_kiolvasas", 2048, NULL, 4, NULL);
