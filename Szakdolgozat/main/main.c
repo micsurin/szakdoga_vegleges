@@ -252,12 +252,10 @@ static void interrupt_kiertekeles(void *arg)
                 {
 
                     fire = 1;
-                    printf("\nallapotok: btnpress=%d, timer_run=%d, task_counter_value=%lld\n, ami nagyobb mint %lld", btnpress, timer_run, task_counter_value, 0x7270E00ULL);
-                    if (timer_run == 0 /* && task_counter_value == 0x7270E00ULL*/) //nem fut a timer, nincs bekapcsolva
+                    if (timer_run == 0  && task_counter_value == 0x7270E00ULL) //nem fut a timer, nincs bekapcsolva
                     {
                         timer_inditas();
                         btnpress++;
-                        printf("timer_inditos_szakaszban vagyok\n");
                     }
                     if (timer_run == 1 && bekapcs == 0)
                     {
@@ -269,12 +267,10 @@ static void interrupt_kiertekeles(void *arg)
                             timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0x7270E00ULL);
                             btnpress = 1;
                         }
-                        printf("a gomb leptetos szakaszban vagyok\n");
-                        printf("a gombnyomasok erteke %d\n", btnpress);
                     }
                     if (timer_run == 1 && bekapcs == 1)
                     {
-                        btnpress++; //fut a timer de nem tudjuk be kell-e kapcsolni
+                        btnpress++; //fut a timer de nem tudjuk ki kell-e kapcsolni
                         if (btnpress == 5)
                         {
                             bekapcs = 0;
@@ -282,12 +278,9 @@ static void interrupt_kiertekeles(void *arg)
                             timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0x7270E00ULL);
                             btnpress = 1;
                         }
-                        printf("a gomb leptetos szakaszban vagyok\n");
-                        printf("a gombnyomasok erteke %d\n", btnpress);
                     }
-                    if (timer_run == 0 && task_counter_value != 0x7270E00ULL) //lejárt a timer meglessük mizu
+                    if (timer_run == 0 && task_counter_value != 0x7270E00ULL) //lejárt a timer
                     {
-                        printf("tulcsordult a timer, a gombnyomasok erteke %d", btnpress);
                         timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0x7270E00ULL);
                         btnpress = 1;
                     }
@@ -465,7 +458,7 @@ void app_main(void)
     gpio_evt_queue = xQueueCreate(10, sizeof(BaseType_t));
     gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
     gpio_isr_handler_add(tuzgomb, gpio_isr_handler, (void *)tuzgomb); //interrupt csatolása a tűzgombhoz
-    
+
     xTaskCreatePinnedToCore(interrupt_kiertekeles, "vEval_programme_task", 2048, NULL, 10, NULL, 1);
 
     TaskHandle_t xHandle = NULL;
