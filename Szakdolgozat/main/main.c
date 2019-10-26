@@ -302,13 +302,13 @@ void telj_gomb(void *pvParameter)
         szint_minusz = gpio_get_level(gomb2);
         if (szint_plusz == 0)
         {
-            printf("\n a gomb meg van nyomva");
+            printf("\n a plusz gomb meg van nyomva");
             if (watt < 75)
                 watt++;
         }
         if (szint_minusz == 0)
         {
-            printf("\n a gomb meg van nyomva");
+            printf("\n a minusz gomb meg van nyomva");
             if (watt > 0)
                 watt--;
         }
