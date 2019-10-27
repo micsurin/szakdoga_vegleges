@@ -345,15 +345,28 @@ void enable_outputs(void *pvParameter)
         {
             if (bekapcs == 1)
             {
-                gpio_set_level(en_driver, 1);
-                gpio_set_level(en_3v3, 1);
-                gpio_set_level(en_12v, 1);
-                gpio_set_level(overheat, 0);
-                int_disable = 0;
+                if (usb_bedugva != 1)
+                {                                    
+                    gpio_set_level(en_driver, 1);
+                    gpio_set_level(en_3v3, 1);
+                    gpio_set_level(en_12v, 1);
+                    gpio_set_level(overheat, 0);
+                    int_disable = 0;
+                }
+                else
+                {
+                    gpio_set_level(en_driver, 0);
+                    gpio_set_level(en_3v3, 1);
+                    gpio_set_level(en_12v, 0);
+                    gpio_set_level(overheat, 0);
+                    int_disable = 1;
+                }
+                
+
             }
             if (bekapcs == 0)
             {
-                if (gpio_get_level(USB_state) > 0)
+                if (usb_bedugva = 1)
                 {
                     gpio_set_level(en_driver, 0);
                     gpio_set_level(en_3v3, 1);
@@ -445,29 +458,30 @@ void app_main(void)
 {
     //Characterize ADC
     adc_karak();
-    //Check if Two Point or Vref are burned into eFuse
     check_efuse();
     //configure GPIO
     gomb_init();
     en_init();
     //timer beállítása, timer túlcsordulásának lekezelése
     timer_inicializalas();
-    xTaskCreate(timer_control, "timer_control", 2048, NULL, 4, NULL);
     //interrupt setup
     gpio_evt_queue = xQueueCreate(10, sizeof(BaseType_t));
     gpio_install_isr_service(ESP_INTR_FLAG_DEFAULT);
     gpio_isr_handler_add(tuzgomb, gpio_isr_handler, (void *)tuzgomb); //interrupt csatolása a tűzgombhoz
 
-    xTaskCreatePinnedToCore(interrupt_kiertekeles, "vEval_programme_task", 2048, NULL, 10, NULL, 1);
+    xTaskCreatePinnedToCore(interrupt_kiertekeles, "interrupt_kiertkeles", 2048, NULL, 10, NULL, 1);
 
-    TaskHandle_t xHandle = NULL;
+    xTaskCreate(timer_control, "timer_control", 2048, NULL, 4, NULL);
+
     xTaskCreate(telj_gomb, "gomb_kiolvasas", 2048, NULL, 4, NULL);
 
     xTaskCreatePinnedToCore(enable_outputs, "kimenetek engedelyezese", 2048, NULL, 4, NULL, 0);
     xTaskCreatePinnedToCore(rgb_control, "rgb vezerles task", 2048, NULL, 4, NULL, 0);
-
+    
+    TaskHandle_t xHandle = NULL;
     while (1)
     {
+        //debug
         timer_get_counter_value(TIMER_GROUP_0, TIMER_0, &task_counter_value);
         print_timer_counter(task_counter_value);
         //interrupt kikapcsolása
@@ -491,6 +505,7 @@ void app_main(void)
             vTaskDelete(xHandle);
             fired = 0;
         }
+        //debug
         printf("%d\n", bekapcs);
         vTaskDelay(pdMS_TO_TICKS(100));
     }
