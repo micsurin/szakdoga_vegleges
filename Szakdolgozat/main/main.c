@@ -51,9 +51,9 @@ volatile int timer_run = 0;
 volatile int btnpress = 1;
 
 //változók deklarálása a méréshez/szabályozáshoz
-uint32_t iout_raw;
-uint32_t vout_raw;
-uint32_t vbat_raw;
+int iout_raw;
+int vout_raw;
+int vbat_raw;
 float iout;
 float vout;
 float vbat;
@@ -318,12 +318,6 @@ void telj_gomb(void *pvParameter)
     vTaskDelete(NULL);
 }
 
-//pwm timer konfiguráció
-ledc_timer_config_t ledc_timer = {
-    .duty_resolution = LEDC_TIMER_7_BIT,
-    .freq_hz = 500000,
-    .speed_mode = LEDC_HS_MODE,
-    .timer_num = LEDC_HS_TIMER};
 //interrupt letiltása flag
 volatile int int_disable = 0;
 int therm_raw;
@@ -381,7 +375,12 @@ void enable_outputs(void *pvParameter)
     }
 }
 
-
+//pwm timer konfiguráció
+ledc_timer_config_t ledc_timer = {
+    .duty_resolution = LEDC_TIMER_7_BIT,
+    .freq_hz = 500000,
+    .speed_mode = LEDC_HS_MODE,
+    .timer_num = LEDC_HS_TIMER};
 // Teljesítményszabályozás megvalósítása
 void telj_szabalyozas(void *pvParameter)
 {
@@ -484,7 +483,7 @@ void app_main(void)
         //interrupt hatására a teljesítmény szabályozás task létrehozása, majd törlése
         if (fire)
         {
-            xTaskCreatePinnedToCore(telj_szabalyozas, "adc_read_task", 2048, NULL, 4, &xHandle, 1);
+            xTaskCreatePinnedToCore(telj_szabalyozas, "telj_szabalyozas", 2048, NULL, 4, &xHandle, 1);
             fired = 1;
         }
         if (!fire && fired == 1)
