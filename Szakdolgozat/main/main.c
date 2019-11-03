@@ -221,6 +221,7 @@ void timer_control(void *pvParameter)
         {
             timer_pause(TIMER_GROUP_0, TIMER_0);
             timer_run = 0;
+            timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0x7270E00ULL);
         }
         vTaskDelay(pdMS_TO_TICKS(10));
     }
@@ -228,7 +229,6 @@ void timer_control(void *pvParameter)
 //időzítő indítása függvény
 void timer_inditas()
 {
-    timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0x7270E00ULL);
     timer_start(TIMER_GROUP_0, TIMER_0);
     timer_run = 1;
 }
@@ -266,10 +266,11 @@ static void interrupt_kiertekeles(void *arg)
                             timer_pause(TIMER_GROUP_0, TIMER_0);
                             timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0x7270E00ULL);
                             btnpress = 1;
+                            timer_run = 0;
                         }
                     }
                     if (timer_run == 1 && bekapcs == 1)
-                    {
+                    {                       
                         btnpress++; //fut a timer de nem tudjuk ki kell-e kapcsolni
                         if (btnpress == 5)
                         {
@@ -277,16 +278,39 @@ static void interrupt_kiertekeles(void *arg)
                             timer_pause(TIMER_GROUP_0, TIMER_0);
                             timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0x7270E00ULL);
                             btnpress = 1;
+                            timer_run = 0;
                         }
                     }
                     if (timer_run == 0 && task_counter_value != 0x7270E00ULL) //lejárt a timer
-                    {
+                    {                        
                         timer_set_counter_value(TIMER_GROUP_0, TIMER_0, 0x7270E00ULL);
                         btnpress = 1;
                     }
                 }
             }
         }
+    }
+}
+void adcmeres (void *pvParameter)
+{
+    while (1)
+    {
+       for (int i = 0; i < NO_OF_SAMPLES; i++)
+       {           
+        vbat_raw += adc1_get_raw((adc1_channel_t)adc_vbat_channel);
+        iout_raw += adc1_get_raw((adc1_channel_t)adc_iout_channel);
+        vout_raw += adc1_get_raw((adc1_channel_t)adc_vout_channel);
+       }
+
+        vbat_raw /= NO_OF_SAMPLES;
+        iout_raw /= NO_OF_SAMPLES;
+        vout_raw /= NO_OF_SAMPLES;
+
+        iout = (22.0 / 4095.0) * iout_raw;
+        vout = (13.322 / 4095) * vout_raw;
+        Rload = vout / iout;
+        vbat = (4.2 / 4095) * vbat_raw;
+       vTaskDelay(pdMS_TO_TICKS(10)); 
     }
 }
 // a teljesítményszabályozó gombok működéséhez szükséges változók
@@ -345,7 +369,7 @@ void enable_outputs(void *pvParameter)
         {
             if (bekapcs == 1)
             {
-                if (usb_bedugva != 1)
+                if (usb_bedugva == 0)
                 {                                    
                     gpio_set_level(en_driver, 1);
                     gpio_set_level(en_3v3, 1);
@@ -353,7 +377,7 @@ void enable_outputs(void *pvParameter)
                     gpio_set_level(overheat, 0);
                     int_disable = 0;
                 }
-                else
+                if (usb_bedugva == 1)
                 {
                     gpio_set_level(en_driver, 0);
                     gpio_set_level(en_3v3, 1);
@@ -366,7 +390,7 @@ void enable_outputs(void *pvParameter)
             }
             if (bekapcs == 0)
             {
-                if (usb_bedugva = 1)
+                if (usb_bedugva == 1)
                 {
                     gpio_set_level(en_driver, 0);
                     gpio_set_level(en_3v3, 1);
@@ -374,7 +398,7 @@ void enable_outputs(void *pvParameter)
                     gpio_set_level(overheat, 0);
                     int_disable = 1;
                 }
-                else
+                if (usb_bedugva == 0)
                 {
                     gpio_set_level(en_driver, 0);
                     gpio_set_level(en_3v3, 0);
@@ -419,20 +443,6 @@ void telj_szabalyozas(void *pvParameter)
     while (1)
     {
         //Multisampling
-        for (int i = 0; i < NO_OF_SAMPLES; i++)
-        {
-            iout_raw += adc1_get_raw((adc1_channel_t)adc_iout_channel);
-            vout_raw += adc1_get_raw((adc1_channel_t)adc_vout_channel);
-            vbat_raw += adc1_get_raw((adc1_channel_t)adc_vbat_channel);
-        }
-        iout_raw /= NO_OF_SAMPLES;
-        vout_raw /= NO_OF_SAMPLES;
-        vbat_raw /= NO_OF_SAMPLES;
-
-        iout = (22 / 4095) * iout_raw;
-        vout = (13.322 / 4095) * vout_raw;
-        vbat = (4.2 / 4095) * vbat_raw;
-        Rload = vout / iout;
         Voutcalc = sqrt(watt) * Rload;
         if (vbat >= Voutcalc)
         {
@@ -450,7 +460,7 @@ void telj_szabalyozas(void *pvParameter)
             ledc_set_duty(buck_pwm.speed_mode, buck_pwm.channel, 127);
             ledc_update_duty(buck_pwm.speed_mode, buck_pwm.channel);
         }
-        vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
 
@@ -474,30 +484,31 @@ void app_main(void)
     xTaskCreate(timer_control, "timer_control", 2048, NULL, 4, NULL);
 
     xTaskCreate(telj_gomb, "gomb_kiolvasas", 2048, NULL, 4, NULL);
+    xTaskCreate(adcmeres, "iout, vout, vbat merese", 2048, NULL, 4, NULL);
 
-    xTaskCreatePinnedToCore(enable_outputs, "kimenetek engedelyezese", 2048, NULL, 4, NULL, 0);
+    xTaskCreatePinnedToCore(enable_outputs, "kimenetek engedelyezese", 2048, NULL, 1, NULL, 0);
     xTaskCreatePinnedToCore(rgb_control, "rgb vezerles task", 2048, NULL, 4, NULL, 0);
     
     TaskHandle_t xHandle = NULL;
     while (1)
     {
         //debug
-        timer_get_counter_value(TIMER_GROUP_0, TIMER_0, &task_counter_value);
-        print_timer_counter(task_counter_value);
+        //timer_get_counter_value(TIMER_GROUP_0, TIMER_0, &task_counter_value);
+        //print_timer_counter(task_counter_value);
         //interrupt kikapcsolása
-        if (int_disable)
+        if (int_disable == 1)
         {
             gpio_intr_disable(tuzgomb);
         }
-        else
+        if (int_disable == 0)
         {
             gpio_intr_enable(tuzgomb);
         }
 
         //interrupt hatására a teljesítmény szabályozás task létrehozása, majd törlése
-        if (fire)
+        if (fire && fired == 0)
         {
-            xTaskCreatePinnedToCore(telj_szabalyozas, "telj_szabalyozas", 2048, NULL, 4, &xHandle, 1);
+            xTaskCreate(telj_szabalyozas, "telj_szabalyozas", 2048, NULL, 4, &xHandle);
             fired = 1;
         }
         if (!fire && fired == 1)
@@ -505,8 +516,6 @@ void app_main(void)
             vTaskDelete(xHandle);
             fired = 0;
         }
-        //debug
-        printf("%d\n", bekapcs);
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 }
