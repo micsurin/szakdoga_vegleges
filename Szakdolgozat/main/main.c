@@ -486,7 +486,7 @@ void app_main(void)
     xTaskCreate(telj_gomb, "gomb_kiolvasas", 2048, NULL, 4, NULL);
     xTaskCreate(adcmeres, "iout, vout, vbat merese", 2048, NULL, 4, NULL);
 
-    xTaskCreatePinnedToCore(enable_outputs, "kimenetek engedelyezese", 2048, NULL, 1, NULL, 0);
+    xTaskCreatePinnedToCore(enable_outputs, "kimenetek engedelyezese", 2048, NULL, 4, NULL, 0);
     xTaskCreatePinnedToCore(rgb_control, "rgb vezerles task", 2048, NULL, 4, NULL, 0);
     
     TaskHandle_t xHandle = NULL;
